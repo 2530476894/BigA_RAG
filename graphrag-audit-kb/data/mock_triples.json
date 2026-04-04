@@ -1,0 +1,113 @@
+{
+  "nodes": [
+    {
+      "label": "Organization",
+      "properties": {
+        "id": "org_001",
+        "name": "XX 建设集团有限公司",
+        "org_type": "企业",
+        "industry": "建筑业",
+        "registration_code": "91110000XXXXXXXXXX"
+      }
+    },
+    {
+      "label": "Organization",
+      "properties": {
+        "id": "org_002",
+        "name": "XX 市审计局",
+        "org_type": "政府机关",
+        "industry": "审计监督"
+      }
+    },
+    {
+      "label": "Regulation",
+      "properties": {
+        "id": "reg_001",
+        "title": "中华人民共和国审计法",
+        "clause_id": "第二十二条",
+        "clause_content": "审计机关对政府投资和以政府投资为主的建设项目的预算执行情况和决算进行审计监督。",
+        "effectiveness_level": "法律",
+        "issuing_authority": "全国人民代表大会常务委员会",
+        "effective_date": "2022-01-01",
+        "status": "effective"
+      }
+    },
+    {
+      "label": "Regulation",
+      "properties": {
+        "id": "reg_002",
+        "title": "中华人民共和国招标投标法",
+        "clause_id": "第三条",
+        "clause_content": "在中华人民共和国境内进行下列工程建设项目包括项目的勘察、设计、施工、监理以及与工程建设有关的重要设备、材料等的采购，必须进行招标。",
+        "effectiveness_level": "法律",
+        "issuing_authority": "全国人民代表大会常务委员会",
+        "effective_date": "2000-01-01",
+        "status": "effective"
+      }
+    },
+    {
+      "label": "AuditCase",
+      "properties": {
+        "id": "case_001",
+        "case_number": "审罚〔2023〕001 号",
+        "title": "XX 公司虚增利润案",
+        "summary": "该公司通过虚构交易、提前确认收入等方式虚增利润 5000 万元，被审计机关查处。",
+        "violation_types": ["财务造假", "信息披露违规"],
+        "amount_involved": 50000000.0,
+        "penalty_amount": 5000000.0,
+        "outcome": "责令改正，罚款 500 万元",
+        "case_date": "2023-06-15"
+      }
+    },
+    {
+      "label": "RiskEvent",
+      "properties": {
+        "id": "risk_001",
+        "event_type": "财务",
+        "description": "发现大额资金往来未履行审批程序",
+        "risk_level": "high",
+        "amount_involved": 10000000.0,
+        "occurrence_time": "2023-03-10",
+        "status": "investigating"
+      }
+    }
+  ],
+  "relations": [
+    {
+      "source": "org_002",
+      "target": "reg_001",
+      "type": "ISSUED_BY",
+      "properties": {}
+    },
+    {
+      "source": "reg_001",
+      "target": "org_001",
+      "type": "APPLIES_TO",
+      "properties": {
+        "scope": "政府投资建设项目的审计监督"
+      }
+    },
+    {
+      "source": "org_001",
+      "target": "case_001",
+      "type": "INVOLVED_IN",
+      "properties": {
+        "role": "被审计单位"
+      }
+    },
+    {
+      "source": "risk_001",
+      "target": "case_001",
+      "type": "DETECTED_IN",
+      "properties": {
+        "detection_method": "审计发现"
+      }
+    },
+    {
+      "source": "org_001",
+      "target": "risk_001",
+      "type": "COMMITTED_BY",
+      "properties": {}
+    }
+  ]
+}

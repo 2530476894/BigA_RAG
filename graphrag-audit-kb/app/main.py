@@ -1,0 +1,373 @@
+"""
+FastAPI Main Entry Point - FastAPI 主入口
+
+用途：定义 API 路由、启动事件、健康检查端点
+关键依赖：fastapi, uvicorn
+审计场景映射：RAG 查询接口、图谱管理接口、健康监控
+"""
+
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+import uvicorn
+from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.middleware.cors import CORSMiddleware
+from app.config import settings, get_settings, Settings
+from app.utils.logger import setup_logger, get_logger, AuditLogContext
+from app.models.schema import RAGQueryRequest, RAGQueryResponse
+from app.services.neo4j_service import get_neo4j_service
+from app.services.vector_service import get_vector_service
+from app.core.retriever import get_hybrid_retriever
+from app.core.generator import get_generator
+
+# 初始化日志
+setup_logger()
+logger = get_logger("main")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator:
+    """
+    应用生命周期管理
+    
+    Yields:
+        None
+    """
+    # 启动时执行
+    logger.info("application_starting", version="0.1.0")
+    
+    # 初始化服务（预连接检查）
+    try:
+        neo4j_service = get_neo4j_service()
+        health = neo4j_service.health_check()
+        logger.info("neo4j_health_check", status=health.get("status"))
+    except Exception as e:
+        logger.warning("neo4j_startup_check_failed", error=str(e))
+    
+    try:
+        vector_service = get_vector_service()
+        health = vector_service.health_check()
+        logger.info("chroma_health_check", status=health.get("status"))
+    except Exception as e:
+        logger.warning("chroma_startup_check_failed", error=str(e))
+    
+    yield
+    
+    # 关闭时执行
+    logger.info("application_shutting_down")
+
+
+# 创建 FastAPI 应用
+app = FastAPI(
+    title="GraphRAG Audit Knowledge Base",
+    description="基于知识图谱的审计 RAG 知识库 API",
+    version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
+)
+
+# 配置 CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 生产环境应限制具体域名
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ==================== Health Endpoints ====================
+
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """
+    健康检查端点
+    
+    Returns:
+        服务健康状态
+    """
+    neo4j_healthy = False
+    chroma_healthy = False
+    
+    try:
+        neo4j_service = get_neo4j_service()
+        neo4j_health = neo4j_service.health_check()
+        neo4j_healthy = neo4j_health.get("status") == "healthy"
+    except Exception as e:
+        logger.error("neo4j_health_check_failed", error=str(e))
+    
+    try:
+        vector_service = get_vector_service()
+        chroma_health = vector_service.health_check()
+        chroma_healthy = chroma_health.get("status") == "healthy"
+    except Exception as e:
+        logger.error("chroma_health_check_failed", error=str(e))
+    
+    overall_healthy = neo4j_healthy and chroma_healthy
+    
+    return {
+        "status": "healthy" if overall_healthy else "degraded",
+        "services": {
+            "neo4j": {
+                "status": "healthy" if neo4j_healthy else "unhealthy",
+            },
+            "chroma": {
+                "status": "healthy" if chroma_healthy else "unhealthy",
+            },
+        },
+    }
+
+
+@app.get("/", tags=["Root"])
+async def root():
+    """
+    根路径欢迎信息
+    """
+    return {
+        "message": "GraphRAG Audit Knowledge Base API",
+        "version": "0.1.0",
+        "docs": "/docs",
+        "health": "/health",
+    }
+
+
+# ==================== RAG Query Endpoint ====================
+
+@app.post("/api/v1/rag/query", response_model=RAGQueryResponse, tags=["RAG"])
+async def rag_query(
+    request: RAGQueryRequest,
+    settings: Settings = Depends(get_settings),
+):
+    """
+    RAG 查询接口
+    
+    基于知识图谱和向量检索的审计合规问答
+    
+    Args:
+        request: RAG 查询请求
+        
+    Returns:
+        RAG 查询响应，包含依据条款、关联案例、置信度、溯源路径等
+    """
+    # 生成任务 ID 用于审计追踪
+    import uuid
+    task_id = str(uuid.uuid4())[:8]
+    
+    with AuditLogContext(task_id=task_id, operation="rag_query"):
+        try:
+            logger.info(
+                "rag_query_received",
+                task_id=task_id,
+                question=request.question[:50] + "..." if len(request.question) > 50 else request.question,
+                vector_top_k=request.vector_top_k,
+                graph_hops=request.graph_hops,
+            )
+            
+            # Step 1: 混合检索
+            retriever = get_hybrid_retriever(
+                vector_top_k=request.vector_top_k,
+                graph_hops=request.graph_hops,
+                fusion_weights=settings.fusion_weights,
+            )
+            
+            retrieval_results = await retriever.retrieve(
+                query=request.question,
+                include_cases=request.include_cases,
+                include_regulations=request.include_regulations,
+            )
+            
+            # Step 2: RAG 生成
+            # TODO: 注入真实 LLM 客户端
+            # from langchain_openai import ChatOpenAI
+            # llm = ChatOpenAI(
+            #     model=settings.llm_model,
+            #     temperature=settings.llm_temperature,
+            #     api_key=settings.llm_api_key,
+            #     base_url=settings.llm_base_url,
+            # )
+            # generator = get_generator(llm_client=llm)
+            
+            # 当前使用占位生成器（无真实 LLM 调用）
+            generator = get_generator()
+            
+            # 由于没有真实 LLM，返回模拟响应
+            # 实际使用时取消上面 LLM 初始化的注释
+            response = _generate_mock_response(request.question, retrieval_results)
+            
+            logger.info(
+                "rag_query_completed",
+                task_id=task_id,
+                confidence=response.confidence_score,
+            )
+            
+            return response
+            
+        except Exception as e:
+            logger.error(
+                "rag_query_failed",
+                task_id=task_id,
+                error=str(e),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"RAG query failed: {str(e)}",
+            )
+
+
+def _generate_mock_response(
+    question: str,
+    retrieval_results: dict,
+) -> RAGQueryResponse:
+    """
+    生成模拟响应（用于无 LLM 时的测试）
+    
+    TODO: 实际使用时应使用真实的 LLM 生成
+    """
+    from app.models.schema import (
+        BasisClause,
+        RelatedCase,
+        TracePath,
+        ValidationFlags,
+        RiskLevel,
+    )
+    
+    vector_results = retrieval_results.get("vector_results", [])
+    graph_results = retrieval_results.get("graph_results", [])
+    
+    # 构建溯源路径
+    trace_paths = []
+    if vector_results:
+        trace_paths.append(TracePath(
+            path_type="vector",
+            path_description=f"通过向量相似度检索到 {len(vector_results)} 个相关文档片段",
+            nodes=[r.get("source", "unknown") for r in vector_results[:3]],
+        ))
+    
+    if graph_results:
+        trace_paths.append(TracePath(
+            path_type="graph",
+            path_description="; ".join([r.get("path_description", "") for r in graph_results[:3]]),
+            nodes=[n for r in graph_results[:3] for n in r.get("nodes", [])],
+        ))
+    
+    # 计算置信度
+    confidence = 0.5
+    if vector_results:
+        confidence += 0.2 * min(len(vector_results), 3) / 3
+    if graph_results:
+        confidence += 0.3 * min(len(graph_results), 3) / 3
+    confidence = min(confidence, 0.95)
+    
+    return RAGQueryResponse(
+        answer=f"【模拟响应】关于您的问题：'{question}'\n\n"
+               f"当前系统已检索到 {len(vector_results)} 个向量结果和 {len(graph_results)} 个图谱结果。\n\n"
+               f"请配置 LLM API 密钥以获取真实的智能回答。参考 .env.example 文件设置 LLM_API_KEY。",
+        basis_clauses=[],
+        related_cases=[],
+        confidence_score=confidence,
+        trace_paths=trace_paths,
+        validation_flags=ValidationFlags(
+            amount_validated=True,
+            time_validated=True,
+            uncertainty_notes=["当前为模拟响应，未接入真实 LLM"],
+        ),
+        risk_level=RiskLevel.LOW,
+        compliance_suggestions=[
+            "请配置 LLM API 密钥以启用完整功能",
+            "建议查阅相关法规原文进行确认",
+        ],
+    )
+
+
+# ==================== Graph Management Endpoints ====================
+
+@app.get("/api/v1/graph/stats", tags=["Graph"])
+async def get_graph_stats():
+    """
+    获取图谱统计信息
+    """
+    try:
+        neo4j_service = get_neo4j_service()
+        
+        # 查询节点和关系统计
+        stats_query = """
+        MATCH ()
+        RETURN 
+            count(*) AS total_nodes,
+            count(DISTINCT labels(())) AS label_count
+        """
+        node_stats = neo4j_service.execute_cypher(stats_query)
+        
+        rel_query = """
+        MATCH ()-[r]->()
+        RETURN 
+            count(r) AS total_relationships,
+            count(DISTINCT type(r)) AS relationship_type_count
+        """
+        rel_stats = neo4j_service.execute_cypher(rel_query)
+        
+        return {
+            "total_nodes": node_stats[0]["total_nodes"] if node_stats else 0,
+            "label_count": node_stats[0]["label_count"] if node_stats else 0,
+            "total_relationships": rel_stats[0]["total_relationships"] if rel_stats else 0,
+            "relationship_type_count": rel_stats[0]["relationship_type_count"] if rel_stats else 0,
+        }
+    except Exception as e:
+        logger.error("get_graph_stats_failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get graph stats: {str(e)}",
+        )
+
+
+@app.post("/api/v1/graph/init-schema", tags=["Graph"])
+async def initialize_graph_schema():
+    """
+    初始化图谱 Schema（创建约束和索引）
+    
+    注意：仅需在首次部署时调用
+    """
+    try:
+        neo4j_service = get_neo4j_service()
+        neo4j_service.initialize_schema()
+        
+        return {
+            "message": "Graph schema initialized successfully",
+            "status": "success",
+        }
+    except Exception as e:
+        logger.error("initialize_schema_failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to initialize schema: {str(e)}",
+        )
+
+
+# ==================== Vector Management Endpoints ====================
+
+@app.get("/api/v1/vector/stats", tags=["Vector"])
+async def get_vector_stats():
+    """
+    获取向量库统计信息
+    """
+    try:
+        vector_service = get_vector_service()
+        health = vector_service.health_check()
+        
+        return health
+    except Exception as e:
+        logger.error("get_vector_stats_failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get vector stats: {str(e)}",
+        )
+
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8080,
+        reload=settings.environment == "development",
+        log_level=settings.log_level.lower(),
+    )

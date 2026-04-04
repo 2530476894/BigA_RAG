@@ -1,0 +1,87 @@
+"""
+Configuration Module - 配置管理模块
+
+用途：加载环境变量，提供全局配置对象
+关键依赖：pydantic-settings, python-dotenv
+审计场景映射：LLM 参数、Neo4j 连接、向量库配置、RAG 检索策略参数
+"""
+
+from typing import Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
+
+
+class Settings(BaseSettings):
+    """
+    应用配置类
+    所有敏感信息通过环境变量注入，支持 .env 文件覆盖
+    """
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
+    
+    # ==================== LLM Configuration ====================
+    llm_provider: str = Field(default="openai", description="LLM 提供商")
+    llm_model: str = Field(default="gpt-4o", description="LLM 模型名称")
+    llm_api_key: str = Field(default="", description="LLM API 密钥")
+    llm_base_url: Optional[str] = Field(default=None, description="LLM API 基础 URL")
+    llm_temperature: float = Field(default=0.3, ge=0.0, le=2.0, description="LLM 温度参数")
+    
+    # ==================== Neo4j Configuration ====================
+    neo4j_uri: str = Field(default="bolt://localhost:7687", description="Neo4j 连接 URI")
+    neo4j_username: str = Field(default="neo4j", description="Neo4j 用户名")
+    neo4j_password: str = Field(default="audit_password_2024", description="Neo4j 密码")
+    neo4j_database: str = Field(default="neo4j", description="Neo4j 数据库名")
+    
+    # ==================== Vector Database Configuration ====================
+    chroma_persist_dir: str = Field(default="./data/chroma_db", description="Chroma 持久化目录")
+    chroma_collection: str = Field(default="audit_embeddings", description="Chroma 集合名")
+    
+    # ==================== Embedding Configuration ====================
+    embedding_model: str = Field(default="text-embedding-3-small", description="嵌入模型")
+    embedding_dimension: int = Field(default=1536, description="嵌入维度")
+    
+    # ==================== RAG Configuration ====================
+    vector_top_k: int = Field(default=5, ge=1, le=20, description="向量检索 TopK")
+    graph_hops: int = Field(default=2, ge=1, le=5, description="图谱多跳层数")
+    fusion_weight_vector: float = Field(default=0.6, ge=0.0, le=1.0, description="向量结果权重")
+    fusion_weight_graph: float = Field(default=0.4, ge=0.0, le=1.0, description="图谱结果权重")
+    
+    # ==================== Application Settings ====================
+    log_level: str = Field(default="INFO", description="日志级别")
+    environment: str = Field(default="development", description="运行环境")
+    
+    # ==================== Paths ====================
+    base_dir: str = Field(default=".", description="项目根目录")
+    data_dir: str = Field(default="./data", description="数据目录")
+    sample_data_dir: str = Field(default="./data/sample", description="样例数据目录")
+    mock_triples_path: str = Field(default="./data/mock_triples.json", description="预置三元组路径")
+    
+    @property
+    def neo4j_auth(self) -> tuple:
+        """返回 Neo4j 认证元组"""
+        return (self.neo4j_username, self.neo4j_password)
+    
+    @property
+    def fusion_weights(self) -> dict:
+        """返回融合权重字典"""
+        return {
+            "vector": self.fusion_weight_vector,
+            "graph": self.fusion_weight_graph
+        }
+
+
+# 全局配置实例
+settings = Settings()
+
+
+def get_settings() -> Settings:
+    """
+    获取配置单例
+    用于依赖注入
+    """
+    return settings

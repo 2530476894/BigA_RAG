@@ -1,0 +1,35 @@
+# GraphRAG Audit Knowledge Base - Requirements
+# Python 3.10+
+
+# FastAPI & Web
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# Environment & Config
+python-dotenv==1.0.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# LangChain & LLM
+langchain==0.1.0
+langchain-community==0.0.10
+langchain-openai==0.0.2
+langchain-core==0.1.10
+
+# Vector Database
+chromadb==0.4.22
+
+# Graph Database
+neo4j==5.16.0
+
+# Utilities
+httpx==0.26.0
+tenacity==8.2.3
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
+
+# Logging & Utils
+structlog==24.1.0
