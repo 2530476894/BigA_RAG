@@ -175,24 +175,13 @@ async def rag_query(
                 include_cases=request.include_cases,
                 include_regulations=request.include_regulations,
             )
-            
-            # Step 2: RAG 生成
-            # TODO: 注入真实 LLM 客户端
-            # from langchain_openai import ChatOpenAI
-            # llm = ChatOpenAI(
-            #     model=settings.llm_model,
-            #     temperature=settings.llm_temperature,
-            #     api_key=settings.llm_api_key,
-            #     base_url=settings.llm_base_url,
-            # )
-            # generator = get_generator(llm_client=llm)
-            
-            # 当前使用占位生成器（无真实 LLM 调用）
+
+            # Step 2: 基于检索生成响应（无 LLM；后续可 get_generator(llm_client=...)）
             generator = get_generator()
-            
-            # 由于没有真实 LLM，返回模拟响应
-            # 实际使用时取消上面 LLM 初始化的注释
-            response = _generate_mock_response(request.question, retrieval_results)
+            response = await generator.generate(
+                question=request.question,
+                retrieval_results=retrieval_results,
+            )
             
             logger.info(
                 "rag_query_completed",
@@ -212,71 +201,6 @@ async def rag_query(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"RAG query failed: {str(e)}",
             )
-
-
-def _generate_mock_response(
-    question: str,
-    retrieval_results: dict,
-) -> RAGQueryResponse:
-    """
-    生成模拟响应（用于无 LLM 时的测试）
-    
-    TODO: 实际使用时应使用真实的 LLM 生成
-    """
-    from app.models.schema import (
-        BasisClause,
-        RelatedCase,
-        TracePath,
-        ValidationFlags,
-        RiskLevel,
-    )
-    
-    vector_results = retrieval_results.get("vector_results", [])
-    graph_results = retrieval_results.get("graph_results", [])
-    
-    # 构建溯源路径
-    trace_paths = []
-    if vector_results:
-        trace_paths.append(TracePath(
-            path_type="vector",
-            path_description=f"通过向量相似度检索到 {len(vector_results)} 个相关文档片段",
-            nodes=[r.get("source", "unknown") for r in vector_results[:3]],
-        ))
-    
-    if graph_results:
-        trace_paths.append(TracePath(
-            path_type="graph",
-            path_description="; ".join([r.get("path_description", "") for r in graph_results[:3]]),
-            nodes=[n for r in graph_results[:3] for n in r.get("nodes", [])],
-        ))
-    
-    # 计算置信度
-    confidence = 0.5
-    if vector_results:
-        confidence += 0.2 * min(len(vector_results), 3) / 3
-    if graph_results:
-        confidence += 0.3 * min(len(graph_results), 3) / 3
-    confidence = min(confidence, 0.95)
-    
-    return RAGQueryResponse(
-        answer=f"【模拟响应】关于您的问题：'{question}'\n\n"
-               f"当前系统已检索到 {len(vector_results)} 个向量结果和 {len(graph_results)} 个图谱结果。\n\n"
-               f"请配置 LLM API 密钥以获取真实的智能回答。参考 .env.example 文件设置 LLM_API_KEY。",
-        basis_clauses=[],
-        related_cases=[],
-        confidence_score=confidence,
-        trace_paths=trace_paths,
-        validation_flags=ValidationFlags(
-            amount_validated=True,
-            time_validated=True,
-            uncertainty_notes=["当前为模拟响应，未接入真实 LLM"],
-        ),
-        risk_level=RiskLevel.LOW,
-        compliance_suggestions=[
-            "请配置 LLM API 密钥以启用完整功能",
-            "建议查阅相关法规原文进行确认",
-        ],
-    )
 
 
 # ==================== Graph Management Endpoints ====================
@@ -367,7 +291,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
-        port=8080,
+        port=8000,
         reload=settings.environment == "development",
         log_level=settings.log_level.lower(),
     )

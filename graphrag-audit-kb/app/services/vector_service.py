@@ -2,7 +2,7 @@
 Vector Service - 向量数据库服务
 
 用途：提供 Chroma 向量库的索引/查询封装
-关键依赖：chromadb, langchain
+关键依赖：chromadb
 审计场景映射：文档片段向量化存储、相似度检索、混合检索的向量部分
 可扩展性：预留 Milvus 等其他向量库的适配接口
 """
@@ -69,13 +69,7 @@ class VectorService:
                 metadata={"hnsw:space": "cosine"},  # 使用余弦相似度
             )
             
-            # TODO: 初始化嵌入函数
-            # 当前使用占位方案，后续可接入 LangChain OpenAIEmbeddings 或其他嵌入模型
-            # from langchain_openai import OpenAIEmbeddings
-            # self._embedding_function = OpenAIEmbeddings(
-            #     model=settings.embedding_model,
-            #     dimensions=settings.embedding_dimension
-            # )
+            # TODO: 初始化嵌入函数（如 OpenAI 兼容 Embeddings API）
             
             logger.info("chroma_client_initialized")
             

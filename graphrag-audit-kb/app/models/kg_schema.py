@@ -4,7 +4,6 @@ Knowledge Graph Schema - 图本体定义
 用途：定义审计领域知识图谱的节点 Label、关系 Type 和属性约束
 关键依赖：无（纯数据定义）
 审计场景映射：支持审计案例、法规条款、风险事件、组织机构等核心实体及关系
-可扩展性：预留招投标、财评场景的扩展点
 """
 
 from typing import List, Dict, Set
@@ -161,36 +160,6 @@ CONSTRAINT_DEFINITIONS: List[dict] = [
     {"label": "Person", "property": "id", "type": "unique"},
     {"label": "Project", "property": "id", "type": "unique"},
 ]
-
-# ==================== Extension Points ====================
-# 预留扩展点：招投标场景
-BIDDING_EXTENSION: Dict[str, any] = {
-    "new_labels": {
-        "BiddingProject": "招投标项目",
-        "Bidder": "投标人",
-        "Tenderer": "招标人",
-        "BidDocument": "招标文件",
-    },
-    "new_relationships": {
-        "SUBMITTED_BID": "提交投标",
-        "WON_BID": "中标",
-        "PUBLISHED_TENDER": "发布招标公告",
-    },
-}
-
-# 预留扩展点：财评场景
-FINANCIAL_EVALUATION_EXTENSION: Dict[str, any] = {
-    "new_labels": {
-        "FinancialIndicator": "财务指标",
-        "EvaluationReport": "评价报告",
-        "BudgetItem": "预算科目",
-    },
-    "new_relationships": {
-        "HAS_INDICATOR": "包含指标",
-        "EXCEEDS_BUDGET": "超预算",
-        "ALLOCATED_TO": "分配至",
-    },
-}
 
 
 def get_node_labels() -> Set[str]:

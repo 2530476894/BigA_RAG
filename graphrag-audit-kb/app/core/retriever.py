@@ -2,7 +2,7 @@
 Retriever Module - 混合检索器
 
 用途：实现向量相似度 + Neo4j Cypher 多跳的混合检索，支持结果加权融合
-关键依赖：langchain, neo4j, chromadb
+关键依赖：neo4j, chromadb
 审计场景映射：法规条款检索、案例关联查询、多跳关系发现
 健壮性：空结果兜底、异常处理、日志追踪
 """
@@ -12,8 +12,6 @@ from app.config import settings
 from app.utils.logger import get_logger
 from app.services.neo4j_service import get_neo4j_service
 from app.services.vector_service import get_vector_service
-from app.models.kg_schema import RELATIONSHIP_TYPES
-
 logger = get_logger("retriever")
 
 
