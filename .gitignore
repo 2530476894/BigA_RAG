@@ -1,56 +1,63 @@
-```
-# Python
-__pycache__/
+```gitignore
+# Compiled and build artifacts
 *.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
+__pycache__/
+*.o
+*.obj
+dist/
+build/
+target/
+
+# Dependencies
 .venv/
-.ENV
-.ENV.local
-.env
-.env.local
-.env.*
-.env.local.*
-.env.vault
-.pytest_cache/
+venv/
+node_modules/
+.julia/
+.zig-cache/
 .mypy_cache/
+.pytest_cache/
 .coverage
 coverage/
 htmlcov/
-.nox/
-.tox/
-.hypothesis/
-.coverage.*
-.python-version
-pip-log.txt
-pip-delete-this-directory.txt
-.pyre/
-.pytype/
-cython_debug/
 
-# Testing
-.tests/
-test/
-tests/
-*.test
-*.tests
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo
 
-# IDE
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
 
-# OS
+# System files
 .DS_Store
 Thumbs.db
-ehthumbs.db
-Icon?
-.directory
-.Trashes
-*.nfs*
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
 ```
