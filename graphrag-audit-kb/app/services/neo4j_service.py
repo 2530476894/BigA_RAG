@@ -450,13 +450,26 @@ class Neo4jService:
             }
 
 
-# 全局服务实例
-neo4j_service = Neo4jService()
+# 全局服务实例（延迟初始化，避免导入时连接失败）
+_neo4j_service_instance = None
 
 
 def get_neo4j_service() -> Neo4jService:
     """
-    获取 Neo4j 服务单例
+    获取 Neo4j 服务单例（延迟初始化）
     用于依赖注入
+    """
+    global _neo4j_service_instance
+    if _neo4j_service_instance is None:
+        try:
+            _neo4j_service_instance = Neo4jService()
+        except Exception as e:
+            logger.warning("neo4j_service_init_failed", error=str(e), note="Will retry on next call")
+            raise
+    return _neo4j_service_instance
+
+
+# 兼容性导出（已废弃，建议使用 get_neo4j_service()）
+neo4j_service = None  # type: ignore
     """
     return neo4j_service

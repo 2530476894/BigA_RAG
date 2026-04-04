@@ -17,6 +17,7 @@ services:
       - neo4j_data:/data
       - neo4j_logs:/logs
       - neo4j_import:/import
+      - ./data:/data/init:ro  # 挂载数据初始化目录（只读）
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7474"]
       interval: 10s

@@ -8,12 +8,13 @@ Pydantic Models - 数据校验模型
 
 from datetime import datetime
 from typing import Optional, List, Literal
+from enum import Enum
 import pydantic
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 # ==================== Effectiveness Level Enum ====================
-class EffectivenessLevel(str):
+class EffectivenessLevel(str, Enum):
     """法规效力等级"""
     LAW = "法律"
     ADMINISTRATIVE_REGULATION = "行政法规"
@@ -23,7 +24,7 @@ class EffectivenessLevel(str):
 
 
 # ==================== Risk Level Enum ====================
-class RiskLevel(str):
+class RiskLevel(str, Enum):
     """风险等级"""
     LOW = "low"
     MEDIUM = "medium"
@@ -36,15 +37,8 @@ class Organization(BaseModel):
     组织机构模型
     审计场景：被审计单位、监管机构、中介机构等
     """
-    id: str = Field(..., description="组织唯一标识")
-    name: str = Field(..., description="组织名称")
-    org_type: str = Field(default="", description="组织类型：政府机关/企业/事业单位/社会团体")
-    industry: Optional[str] = Field(default=None, description="所属行业")
-    registration_code: Optional[str] = Field(default=None, description="统一社会信用代码")
-    attributes: Optional[dict] = Field(default=None, description="扩展属性")
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id": "org_001",
                 "name": "XX 建设集团有限公司",
@@ -53,6 +47,14 @@ class Organization(BaseModel):
                 "registration_code": "91110000XXXXXXXXXX"
             }
         }
+    )
+    
+    id: str = Field(..., description="组织唯一标识")
+    name: str = Field(..., description="组织名称")
+    org_type: str = Field(default="", description="组织类型：政府机关/企业/事业单位/社会团体")
+    industry: Optional[str] = Field(default=None, description="所属行业")
+    registration_code: Optional[str] = Field(default=None, description="统一社会信用代码")
+    attributes: Optional[dict] = Field(default=None, description="扩展属性")
 
 
 class Regulation(BaseModel):
@@ -92,20 +94,8 @@ class AuditCase(BaseModel):
     审计案例模型
     审计场景：历史审计项目、违规案例、处罚案例
     """
-    id: str = Field(..., description="案例唯一标识")
-    case_number: Optional[str] = Field(default=None, description="案例编号")
-    title: str = Field(..., description="案例标题")
-    summary: str = Field(..., description="案例摘要")
-    involved_orgs: List[str] = Field(default_factory=list, description="涉及组织 ID 列表")
-    violation_types: List[str] = Field(default_factory=list, description="违规类型列表")
-    amount_involved: Optional[float] = Field(default=None, description="涉及金额")
-    penalty_amount: Optional[float] = Field(default=None, description="处罚金额")
-    outcome: Optional[str] = Field(default=None, description="处理结果")
-    case_date: Optional[datetime] = Field(default=None, description="案例发生日期")
-    attributes: Optional[dict] = Field(default=None, description="扩展属性")
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id": "case_001",
                 "case_number": "审罚〔2023〕001 号",
@@ -119,6 +109,19 @@ class AuditCase(BaseModel):
                 "case_date": "2023-06-15T00:00:00"
             }
         }
+    )
+    
+    id: str = Field(..., description="案例唯一标识")
+    case_number: Optional[str] = Field(default=None, description="案例编号")
+    title: str = Field(..., description="案例标题")
+    summary: str = Field(..., description="案例摘要")
+    involved_orgs: List[str] = Field(default_factory=list, description="涉及组织 ID 列表")
+    violation_types: List[str] = Field(default_factory=list, description="违规类型列表")
+    amount_involved: Optional[float] = Field(default=None, description="涉及金额")
+    penalty_amount: Optional[float] = Field(default=None, description="处罚金额")
+    outcome: Optional[str] = Field(default=None, description="处理结果")
+    case_date: Optional[datetime] = Field(default=None, description="案例发生日期")
+    attributes: Optional[dict] = Field(default=None, description="扩展属性")
 
 
 class RiskEvent(BaseModel):
@@ -126,19 +129,8 @@ class RiskEvent(BaseModel):
     风险事件模型
     审计场景：审计发现的风险点、异常事项
     """
-    id: str = Field(..., description="风险事件唯一标识")
-    event_type: str = Field(..., description="风险类型：财务/合规/运营/廉政")
-    description: str = Field(..., description="风险事件描述")
-    detected_in: Optional[str] = Field(default=None, description="发现于（审计项目 ID）")
-    related_regulations: List[str] = Field(default_factory=list, description="相关法规 ID 列表")
-    risk_level: RiskLevel = Field(..., description="风险等级")
-    occurrence_time: Optional[datetime] = Field(default=None, description="发生时间")
-    amount_involved: Optional[float] = Field(default=None, description="涉及金额")
-    status: str = Field(default="open", description="状态：open/investigating/closed")
-    attributes: Optional[dict] = Field(default=None, description="扩展属性")
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id": "risk_001",
                 "event_type": "财务",
@@ -151,6 +143,18 @@ class RiskEvent(BaseModel):
                 "status": "investigating"
             }
         }
+    )
+    
+    id: str = Field(..., description="风险事件唯一标识")
+    event_type: str = Field(..., description="风险类型：财务/合规/运营/廉政")
+    description: str = Field(..., description="风险事件描述")
+    detected_in: Optional[str] = Field(default=None, description="发现于（审计项目 ID）")
+    related_regulations: List[str] = Field(default_factory=list, description="相关法规 ID 列表")
+    risk_level: RiskLevel = Field(..., description="风险等级")
+    occurrence_time: Optional[datetime] = Field(default=None, description="发生时间")
+    amount_involved: Optional[float] = Field(default=None, description="涉及金额")
+    status: str = Field(default="open", description="状态：open/investigating/closed")
+    attributes: Optional[dict] = Field(default=None, description="扩展属性")
 
 
 # ==================== RAG Request/Response Models ====================
@@ -158,14 +162,8 @@ class RAGQueryRequest(BaseModel):
     """
     RAG 查询请求模型
     """
-    question: str = Field(..., description="用户问题", min_length=1, max_length=2000)
-    vector_top_k: int = Field(default=5, ge=1, le=20, description="向量检索 TopK")
-    graph_hops: int = Field(default=2, ge=1, le=5, description="图谱跳跃层数")
-    include_cases: bool = Field(default=True, description="是否包含关联案例")
-    include_regulations: bool = Field(default=True, description="是否包含相关法规")
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "question": "政府投资建设项目审计的主要法律依据是什么？",
                 "vector_top_k": 5,
@@ -174,6 +172,13 @@ class RAGQueryRequest(BaseModel):
                 "include_regulations": True
             }
         }
+    )
+    
+    question: str = Field(..., description="用户问题", min_length=1, max_length=2000)
+    vector_top_k: int = Field(default=5, ge=1, le=20, description="向量检索 TopK")
+    graph_hops: int = Field(default=2, ge=1, le=5, description="图谱跳跃层数")
+    include_cases: bool = Field(default=True, description="是否包含关联案例")
+    include_regulations: bool = Field(default=True, description="是否包含相关法规")
 
 
 class BasisClause(BaseModel):
@@ -211,17 +216,8 @@ class RAGQueryResponse(BaseModel):
     RAG 查询响应模型
     强制输出格式，符合审计合规要求
     """
-    answer: str = Field(..., description="核心结论")
-    basis_clauses: List[BasisClause] = Field(default_factory=list, description="依据条款列表")
-    related_cases: List[RelatedCase] = Field(default_factory=list, description="关联案例列表")
-    confidence_score: float = Field(..., description="置信度", ge=0.0, le=1.0)
-    trace_paths: List[TracePath] = Field(default_factory=list, description="溯源路径列表")
-    validation_flags: ValidationFlags = Field(..., description="校验标志")
-    risk_level: RiskLevel = Field(..., description="风险等级")
-    compliance_suggestions: List[str] = Field(default_factory=list, description="合规建议列表")
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "answer": "政府投资建设项目审计的主要法律依据包括《中华人民共和国审计法》...",
                 "basis_clauses": [
@@ -257,16 +253,23 @@ class RAGQueryResponse(BaseModel):
                 "compliance_suggestions": ["建议重点关注招投标环节的合规性", "注意工程变更的审批程序"]
             }
         }
+    )
+    
+    answer: str = Field(..., description="核心结论")
+    basis_clauses: List[BasisClause] = Field(default_factory=list, description="依据条款列表")
+    related_cases: List[RelatedCase] = Field(default_factory=list, description="关联案例列表")
+    confidence_score: float = Field(..., description="置信度", ge=0.0, le=1.0)
+    trace_paths: List[TracePath] = Field(default_factory=list, description="溯源路径列表")
+    validation_flags: ValidationFlags = Field(..., description="校验标志")
+    risk_level: RiskLevel = Field(..., description="风险等级")
+    compliance_suggestions: List[str] = Field(default_factory=list, description="合规建议列表")
 
 
 # ==================== Graph Schema Models ====================
 class KGNode(BaseModel):
     """知识图谱节点模型"""
-    label: str = Field(..., description="节点 Label")
-    properties: dict = Field(..., description="节点属性")
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "label": "Organization",
                 "properties": {
@@ -275,17 +278,16 @@ class KGNode(BaseModel):
                 }
             }
         }
+    )
+    
+    label: str = Field(..., description="节点 Label")
+    properties: dict = Field(..., description="节点属性")
 
 
 class KGRelation(BaseModel):
     """知识图谱关系模型"""
-    source: str = Field(..., description="源节点 ID")
-    target: str = Field(..., description="目标节点 ID")
-    type: str = Field(..., description="关系类型")
-    properties: Optional[dict] = Field(default=None, description="关系属性")
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "source": "org_001",
                 "target": "case_001",
@@ -295,9 +297,28 @@ class KGRelation(BaseModel):
                 }
             }
         }
+    )
+    
+    source: str = Field(..., description="源节点 ID")
+    target: str = Field(..., description="目标节点 ID")
+    type: str = Field(..., description="关系类型")
+    properties: Optional[dict] = Field(default=None, description="关系属性")
 
 
 class TripleData(BaseModel):
     """三元组数据模型（用于批量导入）"""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "nodes": [
+                    {"label": "Organization", "properties": {"id": "org_001", "name": "XX 公司"}}
+                ],
+                "relations": [
+                    {"source": "org_001", "target": "case_001", "type": "INVOLVED_IN"}
+                ]
+            }
+        }
+    )
+    
     nodes: List[KGNode] = Field(..., description="节点列表")
     relations: List[KGRelation] = Field(..., description="关系列表")
