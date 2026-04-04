@@ -1,0 +1,43 @@
+{
+  "case_id": "sample_case_001",
+  "title": "某市轨道交通建设项目审计案例",
+  "summary": "审计机关在对某市轨道交通建设项目进行审计时，发现该项目存在招投标程序不规范、工程变更管理不严、资金支付审核不到位等问题。",
+  "details": {
+    "project_name": "某市轨道交通 X 号线一期工程",
+    "total_investment": 15800000000,
+    "audit_period": "2022-01-01 to 2022-12-31",
+    "audit_findings": [
+      {
+        "issue": "部分标段未依法招标",
+        "description": "该项目有 3 个标段合计金额 2.3 亿元未按规定进行公开招标，采用邀请招标方式确定施工单位。",
+        "violation_type": "程序违规",
+        "amount_involved": 230000000,
+        "regulation_reference": "《中华人民共和国招标投标法》第三条"
+      },
+      {
+        "issue": "工程变更管理不规范",
+        "description": "项目实施过程中发生工程变更 47 项，涉及金额 1.2 亿元，其中 15 项变更未履行审批程序。",
+        "violation_type": "管理缺陷",
+        "amount_involved": 120000000,
+        "regulation_reference": "《政府投资条例》第二十一条"
+      },
+      {
+        "issue": "资金支付审核不严",
+        "description": "向施工单位支付工程进度款时，未严格审核工程量，多支付工程款 850 万元。",
+        "violation_type": "资金风险",
+        "amount_involved": 8500000,
+        "regulation_reference": "《基本建设财务规则》第三十二条"
+      }
+    ],
+    "audit_recommendations": [
+      "严格执行招投标法律法规，规范招标程序",
+      "加强工程变更管理，完善审批流程",
+      "强化资金支付审核，确保资金安全"
+    ],
+    "audit_outcome": {
+      "rectification_required": true,
+      "penalty_amount": 1500000,
+      "responsible_persons_accountable": 5
+    }
+  }
+}
