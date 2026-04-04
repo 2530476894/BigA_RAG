@@ -471,5 +471,3 @@ def get_neo4j_service() -> Neo4jService:
 
 # 兼容性导出（已废弃，建议使用 get_neo4j_service()）
 neo4j_service = None  # type: ignore
-    """
-    return neo4j_service

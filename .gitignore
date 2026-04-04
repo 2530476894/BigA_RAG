@@ -1,45 +1,56 @@
 ```
-# Dependencies
-.venv/
-venv/
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Build and distribution artifacts
-build/
-dist/
-*.egg-info/
-
-# Environment files
+.Python
+env/
+venv/
+.venv/
+.ENV
+.ENV.local
 .env
 .env.local
-*.env.*
-
-# Logs
-*.log
-
-# Temporary files
-*.tmp
-*.swp
-*.swo
-
-# Coverage reports
+.env.*
+.env.local.*
+.env.vault
+.pytest_cache/
+.mypy_cache/
 .coverage
-htmlcov/
 coverage/
+htmlcov/
+.nox/
+.tox/
+.hypothesis/
+.coverage.*
+.python-version
+pip-log.txt
+pip-delete-this-directory.txt
+.pyre/
+.pytype/
+cython_debug/
 
-# IDE specific
+# Testing
+.tests/
+test/
+tests/
+*.test
+*.tests
+
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# OS generated files
+# OS
 .DS_Store
 Thumbs.db
-
-# Docker related (if not already in use)
-.dockerenv
+ehthumbs.db
+Icon?
+.directory
+.Trashes
+*.nfs*
 ```
