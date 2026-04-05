@@ -57,6 +57,16 @@ class Settings(BaseSettings):
     fusion_weight_vector: float = Field(default=0.6, ge=0.0, le=1.0, description="向量结果权重")
     fusion_weight_graph: float = Field(default=0.4, ge=0.0, le=1.0, description="图谱结果权重")
     
+    # ==================== Entity Extraction Configuration ====================
+    entity_extraction_temperature: float = Field(default=0.1, ge=0.0, le=1.0, description="实体提取温度")
+    entity_extraction_max_tokens: int = Field(default=512, ge=1, le=2048, description="实体提取最大token数")
+    
+    # ==================== Entity Linking Configuration ====================
+    entity_linking_temperature: float = Field(default=0.1, ge=0.0, le=1.0, description="实体链接温度")
+    entity_linking_max_tokens: int = Field(default=512, ge=1, le=2048, description="实体链接最大token数")
+    entity_linking_similarity_threshold: float = Field(default=0.7, ge=0.0, le=1.0, description="实体链接相似度阈值")
+    entity_linking_max_candidates: int = Field(default=5, ge=1, le=20, description="实体链接最大候选数")
+    
     # ==================== Application Settings ====================
     log_level: str = Field(default="INFO", description="日志级别")
     environment: str = Field(default="development", description="运行环境")
@@ -78,6 +88,24 @@ class Settings(BaseSettings):
         return {
             "vector": self.fusion_weight_vector,
             "graph": self.fusion_weight_graph
+        }
+    
+    @property
+    def entity_extraction(self) -> dict:
+        """返回实体提取配置字典"""
+        return {
+            "temperature": self.entity_extraction_temperature,
+            "max_tokens": self.entity_extraction_max_tokens
+        }
+    
+    @property
+    def entity_linking(self) -> dict:
+        """返回实体链接配置字典"""
+        return {
+            "temperature": self.entity_linking_temperature,
+            "max_tokens": self.entity_linking_max_tokens,
+            "similarity_threshold": self.entity_linking_similarity_threshold,
+            "max_candidates": self.entity_linking_max_candidates
         }
 
 

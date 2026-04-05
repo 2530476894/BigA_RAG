@@ -450,6 +450,111 @@ class Neo4jService:
                 "status": "unhealthy",
                 "error": str(e)
             }
+    
+    # ==================== Semantic Search ====================
+    
+    def semantic_search_nodes(
+        self,
+        entity_text: str,
+        entity_type: str,
+        similarity_threshold: float = 0.7,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        语义搜索节点（基于文本相似度）
+        
+        Args:
+            entity_text: 实体文本
+            entity_type: 实体类型
+            similarity_threshold: 相似度阈值
+            limit: 返回数量限制
+            
+        Returns:
+            匹配的节点列表（包含相似度分数）
+        """
+        # 简化的语义搜索实现，使用字符串包含和长度匹配
+        # TODO: 集成真正的语义相似度计算（如使用嵌入模型）
+        
+        search_field = "name" if entity_type == "organization" else "title"
+        
+        query = f"""
+        MATCH (n:{entity_type})
+        WHERE n.{search_field} CONTAINS $search_text
+        OR toLower(n.{search_field}) CONTAINS toLower($search_text)
+        RETURN n.id AS id,
+               n.{search_field} AS text,
+               labels(n) AS labels,
+               properties(n) AS properties,
+               CASE 
+                 WHEN n.{search_field} = $search_text THEN 1.0
+                 WHEN n.{search_field} CONTAINS $search_text THEN 0.8
+                 ELSE 0.6
+               END AS similarity_score
+        ORDER BY similarity_score DESC
+        LIMIT $limit
+        """
+        
+        results = self.execute_cypher(query, {
+            "search_text": entity_text,
+            "limit": limit
+        })
+        
+        # 过滤相似度阈值
+        filtered_results = [
+            result for result in results 
+            if result.get("similarity_score", 0) >= similarity_threshold
+        ]
+        
+        logger.info(
+            "semantic_search_completed",
+            entity_text=entity_text,
+            entity_type=entity_type,
+            result_count=len(filtered_results)
+        )
+        
+        return filtered_results
+    
+    def get_node_context(self, node_id: str, node_label: str) -> Dict[str, Any]:
+        """
+        获取节点的关联上下文
+        
+        Args:
+            node_id: 节点ID
+            node_label: 节点标签
+            
+        Returns:
+            节点上下文信息
+        """
+        # 获取节点基本信息
+        node_query = f"""
+        MATCH (n:{node_label} {{id: $node_id}})
+        RETURN properties(n) AS properties, labels(n) AS labels
+        """
+        
+        node_results = self.execute_cypher(node_query, {"node_id": node_id})
+        if not node_results:
+            return {}
+        
+        node_info = node_results[0]
+        
+        # 获取关联节点（1跳）
+        context_query = f"""
+        MATCH (n:{node_label} {{id: $node_id}})-[r]-(related)
+        RETURN 
+            related.id AS related_id,
+            labels(related) AS related_labels,
+            properties(related) AS related_properties,
+            type(r) AS relationship_type,
+            count(*) AS connection_count
+        LIMIT 10
+        """
+        
+        context_results = self.execute_cypher(context_query, {"node_id": node_id})
+        
+        return {
+            "node_info": node_info,
+            "related_nodes": context_results
+        }
 
 
 # 全局服务实例（延迟初始化，避免导入时连接失败）

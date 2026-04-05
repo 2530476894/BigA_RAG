@@ -163,6 +163,39 @@ async def health_check():
     }
 
 
+@app.get("/health/entity", tags=["Health"])
+async def entity_health_check():
+    """
+    实体识别服务健康检查端点。
+
+    Returns:
+        实体识别服务的状态信息
+    """
+    try:
+        from app.services.llm_entity_service import get_llm_entity_service
+        entity_service = get_llm_entity_service()
+        
+        # 测试实体提取
+        test_entities = await entity_service.extract_entities("测试审计实体识别")
+        
+        return {
+            "status": "healthy",
+            "entity_service": {
+                "llm_available": entity_service._llm_client is not None,
+                "test_extraction": len(test_entities) >= 0,  # 至少不报错
+                "extracted_count": len(test_entities)
+            }
+        }
+    except Exception as e:
+        logger.error("entity_health_check_failed", error=str(e))
+        return {
+            "status": "unhealthy",
+            "entity_service": {
+                "error": str(e)
+            }
+        }
+
+
 @app.get("/", tags=["Root"])
 async def root():
     """

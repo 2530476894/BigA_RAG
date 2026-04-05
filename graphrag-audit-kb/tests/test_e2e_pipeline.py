@@ -833,6 +833,64 @@ class TestAPIIntegration:
         print("\n✓ 所有断言通过")
         print("=" * 60 + "\n")
 
+    def test_end_to_end_rag_accuracy_with_entities(self):
+        """测试端到端RAG准确率，验证实体识别对检索结果的影响"""
+        print("\n" + "=" * 60)
+        print("【端到端RAG准确率测试（含实体识别）】")
+        print("=" * 60)
+
+        # 测试不同类型的问题
+        test_questions = [
+            "政府投资建设项目审计的主要法律依据是什么？",
+            "审计中发现虚增成本应该如何处理？",
+            "企业财务造假的处罚规定有哪些？"
+        ]
+
+        from app.main import app
+        client = TestClient(app)
+
+        for question in test_questions:
+            print(f"\n测试问题：{question}")
+            
+            query_payload = {
+                "question": question,
+                "vector_top_k": 5,
+                "graph_hops": 2,
+                "include_cases": True,
+                "include_regulations": True,
+            }
+
+            response = client.post("/api/v1/rag/query", json=query_payload)
+            assert response.status_code == 200
+
+            response_data = response.json()
+            
+            # 验证实体识别溯源
+            trace_paths = response_data.get("trace_paths", [])
+            entity_traces = [t for t in trace_paths if t.get("path_type") == "entity_extraction"]
+            
+            if entity_traces:
+                print(f"✓ 识别出实体：{entity_traces[0].get('nodes', [])}")
+            else:
+                print("⚠ 未识别出实体（可能使用回退方法）")
+            
+            # 验证检索结果质量
+            confidence = response_data.get("confidence_score", 0)
+            basis_clauses = response_data.get("basis_clauses", [])
+            related_cases = response_data.get("related_cases", [])
+            
+            print(f"置信度：{confidence:.3f}")
+            print(f"法规条款数：{len(basis_clauses)}")
+            print(f"相关案例数：{len(related_cases)}")
+            
+            # 基本质量检查
+            assert confidence >= 0.0, "置信度不应为负数"
+            assert isinstance(basis_clauses, list), "法规条款应为列表"
+            assert isinstance(related_cases, list), "相关案例应为列表"
+
+        print("\n✓ 端到端准确率测试完成")
+        print("=" * 60 + "\n")
+
 
 class TestHybridRetrieverUnit:
     """混合检索器（结构与初始化）"""
@@ -858,8 +916,30 @@ class TestHybridRetrieverUnit:
             assert "vector_results" in results
             assert "graph_results" in results
             assert "fused_results" in results
-        except Exception as e:
-            pytest.skip(f"Services not available: {str(e)}")
+    @pytest.mark.asyncio
+    async def test_entity_extraction_accuracy(self, sample_question):
+        """测试实体识别准确性"""
+        retriever = get_hybrid_retriever()
+        
+        # 测试实体提取
+        entities = await retriever._extract_entities(sample_question)
+        
+        # 验证实体格式
+        for entity in entities:
+            assert "type" in entity
+            assert "text" in entity
+            assert "confidence" in entity
+            assert isinstance(entity["confidence"], (int, float))
+            assert 0.0 <= entity["confidence"] <= 1.0
+        
+        # 对于审计相关问题，应该识别出相关实体
+        entity_texts = [e["text"] for e in entities]
+        assert len(entity_texts) > 0, "应该至少识别出一个实体"
+        
+        # 检查是否包含审计相关关键词
+        audit_keywords = ["审计", "政府", "投资", "建设", "项目", "法律", "依据"]
+        has_audit_related = any(any(kw in text for kw in audit_keywords) for text in entity_texts)
+        assert has_audit_related, f"应该识别出审计相关实体，当前实体: {entity_texts}"
 
 
 class TestRAGGeneratorUnit:

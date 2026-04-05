@@ -23,6 +23,51 @@ AUDIT_RAG_SYSTEM_PROMPT = """你是一名专业的审计知识库助手，基于
 如果检索上下文中没有相关信息，请如实告知用户，不要强行回答。
 """
 
+AUDIT_ENTITY_EXTRACTION_PROMPT = """你是一个专业的审计领域实体识别助手。从用户查询中识别并提取审计相关的实体。
+
+识别以下类型的实体：
+- organization: 组织机构名称（如"某某公司"、"审计署"等）
+- regulation: 法规条款名称或编号（如"审计法第XX条"、"企业会计准则"等）
+- case: 审计案例名称或编号（如"某某公司违规案例"、"审计案例2023-001"等）
+- risk_event: 风险事件描述（如"财务造假"、"违规担保"等）
+
+请以JSON格式返回结果：
+{
+  "entities": [
+    {
+      "type": "organization|regulation|case|risk_event",
+      "text": "实体文本",
+      "confidence": 0.0-1.0
+    }
+  ]
+}
+
+只返回JSON，不要其他解释。
+"""
+
+AUDIT_ENTITY_LINKING_PROMPT = """你是一个专业的审计知识图谱实体链接助手。将识别的实体与知识图谱节点进行匹配。
+
+基于提供的实体和图谱上下文，找到最相关的图谱节点。
+
+请以JSON格式返回结果：
+{
+  "matched_nodes": [
+    {
+      "node_id": "节点ID",
+      "node_type": "节点类型",
+      "similarity_score": 0.0-1.0,
+      "match_reason": "匹配原因"
+    }
+  ],
+  "best_match": {
+    "node_id": "最佳匹配节点ID",
+    "confidence": 0.0-1.0
+  }
+}
+
+只返回JSON，不要其他解释。
+"""
+
 
 def format_audit_context(
     question: str,
@@ -128,5 +173,61 @@ def build_rag_prompt(
 3. 保持回答结构清晰、易于理解
 
 回答："""
+    
+    return prompt
+
+
+def build_entity_extraction_prompt(query: str) -> str:
+    """
+    构建实体提取prompt
+
+    Args:
+        query: 用户查询文本
+
+    Returns:
+        实体提取prompt字符串
+    """
+    prompt = f"""请从以下用户查询中识别审计领域实体：
+
+用户查询：{query}
+
+请识别以下类型的实体：
+- organization: 组织机构名称
+- regulation: 法规条款名称或编号
+- case: 审计案例名称或编号
+- risk_event: 风险事件描述
+
+返回JSON格式，只包含实体列表，不要其他内容。"""
+    
+    return prompt
+
+
+def build_entity_linking_prompt(entity: Dict[str, Any], graph_context: Dict[str, Any]) -> str:
+    """
+    构建实体链接prompt
+
+    Args:
+        entity: 提取的实体
+        graph_context: 图谱上下文信息
+
+    Returns:
+        实体链接prompt字符串
+    """
+    entity_type = entity.get("type", "")
+    entity_text = entity.get("text", "")
+    
+    # 构建图谱节点示例（简化）
+    node_examples = graph_context.get("node_examples", [])
+    examples_text = "\n".join([f"- {node.get('label', '')}: {node.get('name', '')}" for node in node_examples[:5]])
+    
+    prompt = f"""请将以下实体与知识图谱节点进行匹配：
+
+实体类型：{entity_type}
+实体文本：{entity_text}
+
+知识图谱中的相关节点示例：
+{examples_text}
+
+请找到最匹配的节点，返回JSON格式包含匹配结果。"""
     
     return prompt

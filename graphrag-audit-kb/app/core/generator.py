@@ -25,12 +25,23 @@ def _build_trace_paths(retrieval_results: Dict[str, Any]) -> List[TracePath]:
     """
     从检索结果构造溯源路径列表。
 
-    读取 ``vector_results``、``graph_results``；向量路径汇总来源与条数，图谱路径合并前若干条的
-    ``path_description`` 与 ``nodes``（各取最多 3 条以控制体积）。
+    读取 ``vector_results``、``graph_results``、``entities``；包含实体识别、向量检索和图谱检索的溯源信息。
     """
     trace_paths: List[TracePath] = []
     vector_results = retrieval_results.get("vector_results", [])
     graph_results = retrieval_results.get("graph_results", [])
+    entities = retrieval_results.get("entities", [])
+
+    # 实体识别溯源
+    if entities:
+        entity_types = list({e.get("type", "unknown") for e in entities})
+        trace_paths.append(
+            TracePath(
+                path_type="entity_extraction",
+                path_description=f"通过LLM识别出 {len(entities)} 个审计领域实体：{', '.join(entity_types)}",
+                nodes=[e.get("text", "") for e in entities[:5]],  # 限制显示数量
+            )
+        )
 
     if vector_results:
         sources = list({r.get("source", "unknown") for r in vector_results[:3]})

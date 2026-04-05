@@ -152,15 +152,21 @@ class HybridRetriever:
             图谱检索结果列表
         """
         try:
-            # Step 1: 简单关键词提取（TODO: 可用 LLM 优化为实体链接）
-            keywords = self._extract_keywords(query)
+            # Step 1: LLM实体提取
+            entities = await self._extract_entities(query)
             
             graph_results = []
             
-            # Step 2: 对每个关键词进行搜索和多跳查询
-            for keyword in keywords[:3]:  # 限制关键词数量，避免过多查询
+            # Step 2: 对每个实体进行搜索和多跳查询
+            for entity in entities[:3]:  # 限制实体数量，避免过多查询
+                entity_text = entity.get("text", "")
+                entity_type = entity.get("type", "unknown")
+                
+                if not entity_text:
+                    continue
+                
                 # 搜索匹配的节点
-                matched_nodes = await self._search_matching_nodes(keyword)
+                matched_nodes = await self._search_matching_nodes(entity_text, entity_type)
                 
                 # 对每个匹配节点进行多跳查询
                 for node in matched_nodes[:5]:  # 限制起始节点数量
@@ -198,11 +204,42 @@ class HybridRetriever:
             logger.error("graph_retrieval_failed", error=str(e))
             return []
     
-    def _extract_keywords(self, query: str) -> List[str]:
+    async def _extract_entities(self, query: str) -> List[Dict[str, Any]]:
         """
-        从查询中提取关键词
+        从查询中提取审计领域实体
         
-        TODO: 当前使用简单的空格分词，后续可用 LLM 或 TF-IDF 优化
+        使用LLM进行实体识别，如果失败则回退到关键词提取
+        
+        Args:
+            query: 查询文本
+            
+        Returns:
+            实体对象列表，每个包含type, text, confidence
+        """
+        from app.services.llm_entity_service import get_llm_entity_service
+        
+        entity_service = get_llm_entity_service()
+        entities = await entity_service.extract_entities(query)
+        
+        if entities:
+            return entities
+        else:
+            # 回退到关键词提取
+            logger.warning("llm_entity_extraction_failed_fallback_to_keywords")
+            keywords = self._extract_keywords_fallback(query)
+            # 将关键词转换为实体格式
+            return [
+                {
+                    "type": "unknown",
+                    "text": keyword,
+                    "confidence": 0.5
+                }
+                for keyword in keywords
+            ]
+    
+    def _extract_keywords_fallback(self, query: str) -> List[str]:
+        """
+        回退的关键词提取方法（原_extract_keywords逻辑）
         
         Args:
             query: 查询文本
@@ -210,39 +247,91 @@ class HybridRetriever:
         Returns:
             关键词列表
         """
-        # 简单实现：按空格和标点分割，过滤停用词
         import re
         words = re.split(r'[\s,，.。;；:：!?！？]+', query)
         stopwords = {"的", "了", "是", "在", "和", "与", "及", "等", "什么", "如何", "怎么", "哪些"}
         keywords = [w for w in words if w and w not in stopwords and len(w) >= 2]
         return keywords[:10]  # 限制关键词数量
     
-    async def _search_matching_nodes(self, keyword: str) -> List[Dict[str, Any]]:
+    async def _validate_entities_with_graph(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        搜索匹配关键词的节点
+        使用图谱搜索验证和细化实体
         
         Args:
-            keyword: 关键词
+            entities: LLM提取的实体列表
+            
+        Returns:
+            验证后的实体列表
+        """
+        validated_entities = []
+        
+        for entity in entities:
+            entity_text = entity.get("text", "")
+            entity_type = entity.get("type", "")
+            
+            if not entity_text or entity_type == "unknown":
+                continue
+            
+            # 使用图谱搜索验证实体
+            matched_nodes = await self._search_matching_nodes(entity_text, entity_type)
+            
+            if matched_nodes:
+                # 实体有效，保留
+                validated_entity = entity.copy()
+                validated_entity["graph_validation"] = True
+                validated_entity["matched_nodes_count"] = len(matched_nodes)
+                validated_entities.append(validated_entity)
+            else:
+                # 实体在图谱中未找到，降低置信度
+                entity_copy = entity.copy()
+                entity_copy["confidence"] *= 0.5
+                entity_copy["graph_validation"] = False
+                validated_entities.append(entity_copy)
+        
+        return validated_entities
+    
+    async def _search_matching_nodes(self, entity_text: str, entity_type: str = None) -> List[Dict[str, Any]]:
+        """
+        搜索匹配实体的节点
+        
+        Args:
+            entity_text: 实体文本
+            entity_type: 实体类型（可选，用于优化搜索）
             
         Returns:
             匹配的节点列表
         """
         matched_nodes = []
         
-        # 在主要节点类型中搜索
-        for label in ["Organization", "Regulation", "AuditCase", "RiskEvent"]:
+        # 确定搜索的节点类型
+        if entity_type and entity_type != "unknown":
+            # 如果指定了实体类型，只搜索对应类型
+            search_labels = [entity_type.capitalize()]
+        else:
+            # 否则搜索所有主要类型
+            search_labels = ["Organization", "Regulation", "AuditCase", "RiskEvent"]
+        
+        # 使用语义搜索
+        for label in search_labels:
             try:
-                nodes = self._neo4j_service.search_nodes(
-                    label=label,
-                    search_field="name" if label == "Organization" else "title",
-                    search_value=keyword,
-                    limit=5,
+                nodes = self._neo4j_service.semantic_search_nodes(
+                    entity_text=entity_text,
+                    entity_type=label.lower(),
+                    similarity_threshold=settings.entity_linking.get("similarity_threshold", 0.7),
+                    limit=settings.entity_linking.get("max_candidates", 5)
                 )
                 for node in nodes:
                     node["_label"] = label
                     matched_nodes.append(node)
             except Exception as e:
-                logger.warning("node_search_failed", label=label, keyword=keyword, error=str(e))
+                logger.warning("semantic_node_search_failed", label=label, entity_text=entity_text, error=str(e))
+        
+        logger.info(
+            "entity_node_search_completed",
+            entity_text=entity_text,
+            entity_type=entity_type,
+            matched_count=len(matched_nodes)
+        )
         
         return matched_nodes
     
@@ -299,6 +388,37 @@ class HybridRetriever:
             "relevance_score": relevance_score,
             "source": "graph",
         }
+    
+    def _semantic_match_entity(self, entity_text: str, node_text: str) -> float:
+        """
+        计算实体文本与节点文本的语义相似度
+        
+        Args:
+            entity_text: 实体文本
+            node_text: 节点文本
+            
+        Returns:
+            相似度分数 (0.0-1.0)
+        """
+        if not entity_text or not node_text:
+            return 0.0
+        
+        # 简化的相似度计算
+        entity_lower = entity_text.lower()
+        node_lower = node_text.lower()
+        
+        # 完全匹配
+        if entity_lower == node_lower:
+            return 1.0
+        
+        # 包含关系
+        if entity_lower in node_lower or node_lower in entity_lower:
+            return 0.8
+        
+        # 公共子串长度比例
+        import difflib
+        matcher = difflib.SequenceMatcher(None, entity_lower, node_lower)
+        return matcher.ratio()
     
     def _deduplicate_graph_results(
         self,

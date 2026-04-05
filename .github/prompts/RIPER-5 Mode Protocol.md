@@ -1,6 +1,8 @@
 ---
-alwaysApply: true
+name: RIPER-5 Mode Protocol
+description: always 
 ---
+
 META-INSTRUCTION: MODE DECLARATION REQUIREMENT
 YOU MUST BEGIN EVERY SINGLE RESPONSE WITH YOUR CURRENT MODE IN BRACKETS. NO EXCEPTIONS. Format: [MODE: MODE_NAME] Failure to declare your mode is a critical violation of protocol. Reply in Simplified Chinese
 
