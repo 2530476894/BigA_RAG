@@ -7,7 +7,7 @@ FastAPI Main Entry Point - FastAPI 主入口
 """
 
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional, Any
 import uvicorn
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,11 +17,51 @@ from app.models.schema import RAGQueryRequest, RAGQueryResponse
 from app.services.neo4j_service import get_neo4j_service
 from app.services.vector_service import get_vector_service
 from app.core.retriever import get_hybrid_retriever
-from app.core.generator import get_generator
+from app.core.generator import get_generator, RAGGenerator
+from app.llm import create_qwen_llm, QwenLLM
 
 # 初始化日志
 setup_logger()
 logger = get_logger("main")
+
+# 全局 LLM 客户端和生成器实例
+_llm_client: Optional[QwenLLM] = None
+_generator: Optional[RAGGenerator] = None
+
+
+def initialize_llm_components() -> None:
+    """在应用启动时初始化 LLM 客户端和生成器"""
+    global _llm_client, _generator
+    
+    # 检查是否配置了 DashScope API Key
+    api_key = settings.dashscope_api_key or settings.llm_api_key
+    
+    if api_key and api_key.strip():
+        try:
+            _llm_client = create_qwen_llm(
+                api_key=api_key.strip(),
+                model=settings.llm_model,
+                base_url=settings.llm_base_url,
+            )
+            _generator = get_generator(llm_client=_llm_client)
+            logger.info(
+                "llm_initialized",
+                model=settings.llm_model,
+                provider=settings.llm_provider,
+            )
+        except Exception as e:
+            logger.error("llm_initialization_failed", error=str(e))
+            _generator = get_generator()  # 降级为无 LLM 模式
+    else:
+        logger.warning("llm_not_configured", message="DASHSCOPE_API_KEY or LLM_API_KEY not set, running in fallback mode")
+        _generator = get_generator()  # 无 LLM 模式
+
+
+def get_llm_generator() -> RAGGenerator:
+    """获取已初始化的生成器实例"""
+    if _generator is None:
+        initialize_llm_components()
+    return _generator
 
 
 @asynccontextmanager
@@ -29,11 +69,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     """
     应用生命周期管理。
 
-    进入时在启动阶段记录日志并对 Neo4j、Chroma 做预连接健康检查（失败仅告警，不阻塞启动）。
-    ``yield`` 之后应用处于运行期，接受请求；进程退出或关闭时在 ``yield`` 之后执行收尾日志。
+    进入时在启动阶段记录日志并对 Neo4j、Chroma 做预连接健康检查（失败仅告警，不阻塞启动），
+    同时初始化 LLM 客户端和生成器。``yield`` 之后应用处于运行期，接受请求；
+    进程退出或关闭时在 ``yield`` 之后执行收尾日志。
     """
     # 启动时执行
     logger.info("application_starting", version="0.1.0")
+    
+    # 初始化 LLM 组件
+    initialize_llm_components()
     
     # 初始化服务（预连接检查）
     try:
@@ -178,8 +222,8 @@ async def rag_query(
                 include_regulations=request.include_regulations,
             )
 
-            # Step 2: 基于检索生成响应（无 LLM；后续可 get_generator(llm_client=...)）
-            generator = get_generator()
+            # Step 2: 基于检索生成响应（使用已初始化的 LLM 生成器）
+            generator = get_llm_generator()
             response = await generator.generate(
                 question=request.question,
                 retrieval_results=retrieval_results,
