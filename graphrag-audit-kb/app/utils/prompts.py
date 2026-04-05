@@ -18,6 +18,11 @@ def format_audit_context(
 ) -> Dict[str, Any]:
     """
     将向量与图谱检索结果格式化为可读上下文，供生成器拼装 answer。
+
+    Returns:
+        字典键：``question``；``vector_context`` / ``graph_context`` 为两侧可读文本；
+        ``vector_top_k``、``graph_hops``、``vector_weight``、``graph_weight`` 为参数回显；
+        ``current_time`` 为时间戳字符串（可由参数传入覆盖）。
     """
     vector_context_parts = []
     for i, result in enumerate(vector_results[:vector_top_k], 1):

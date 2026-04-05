@@ -1,9 +1,9 @@
 """
 Configuration Module - 配置管理模块
 
-用途：加载环境变量，提供全局配置对象
-关键依赖：pydantic-settings, python-dotenv
-审计场景映射：LLM 参数、Neo4j 连接、向量库配置、RAG 检索策略参数
+用途：从环境变量与可选 ``.env`` 文件加载配置，提供全局 ``Settings`` 单例。
+关键依赖：pydantic-settings（``BaseSettings``）、python-dotenv（由 pydantic-settings 读取 ``.env``）。
+审计场景映射：LLM 参数、Neo4j 连接、向量库配置、RAG 检索策略参数。
 """
 
 from typing import Optional
@@ -13,8 +13,11 @@ from pydantic import Field
 
 class Settings(BaseSettings):
     """
-    应用配置类
-    所有敏感信息通过环境变量注入，支持 .env 文件覆盖
+    应用配置类：字段对应环境变量（不区分大小写），可被项目根目录 ``.env`` 覆盖。
+
+    分组概览：``llm_*`` 大模型调用；``neo4j_*`` 图数据库；``chroma_*`` / ``embedding_*`` 向量与嵌入；
+    ``vector_top_k`` / ``graph_hops`` / ``fusion_weight_*`` 混合检索与融合；``log_level`` / ``environment`` 运行态；
+    ``base_dir`` / ``data_dir`` 等路径与样例数据位置。
     """
     
     model_config = SettingsConfigDict(
@@ -68,7 +71,7 @@ class Settings(BaseSettings):
     
     @property
     def fusion_weights(self) -> dict:
-        """返回融合权重字典"""
+        """返回融合权重字典，供 ``HybridRetriever._fuse_results`` 对向量与图谱分支加权使用。"""
         return {
             "vector": self.fusion_weight_vector,
             "graph": self.fusion_weight_graph

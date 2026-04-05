@@ -5,6 +5,9 @@ Vector Service - 向量数据库服务
 关键依赖：chromadb
 审计场景映射：文档片段向量化存储、相似度检索、混合检索的向量部分
 可扩展性：预留 Milvus 等其他向量库的适配接口
+
+注意：模块末尾 ``vector_service`` 在 import 时即构造 ``VectorService``（急加载单例），
+与 ``get_neo4j_service`` 的延迟初始化不同。
 """
 
 from typing import Optional, List, Dict, Any
@@ -19,8 +22,8 @@ logger = get_logger("vector_service")
 
 class VectorService:
     """
-    向量数据库服务类
-    封装 ChromaDB 操作，支持文档嵌入和相似度检索
+    向量数据库服务类：封装 ChromaDB 持久化客户端与集合；``add_documents`` / ``similarity_search``
+    在未接入自定义嵌入模型时依赖 Chroma 默认嵌入与查询管线（见实现内日志）。
     """
     
     _instance: Optional["VectorService"] = None
@@ -93,6 +96,8 @@ class VectorService:
             
         Returns:
             添加的文档 ID 列表
+
+        说明：当前未传入 ``embeddings`` 时由 Chroma 在服务端生成嵌入（与 ``using_placeholder_embeddings`` 警告一致）。
         """
         if not self._collection:
             raise RuntimeError("Vector collection not initialized")
@@ -149,6 +154,8 @@ class VectorService:
             
         Returns:
             检索结果列表，每项包含：chunk, source, score, metadata
+
+        说明：在集合元数据 ``hnsw:space`` 为 cosine 时，将返回的 ``distance`` 近似为 ``1.0 - distance`` 作为 ``score``。
         """
         if not self._collection:
             raise RuntimeError("Vector collection not initialized")
@@ -275,7 +282,7 @@ class VectorService:
             }
 
 
-# 全局服务实例
+# 模块导入时即创建的单例（供 ``get_vector_service`` 返回）
 vector_service = VectorService()
 
 

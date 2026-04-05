@@ -68,7 +68,12 @@ class HybridRetriever:
             include_regulations: 是否包含法规
             
         Returns:
-            包含 vector_results 和 graph_results 的字典
+            字典键包括：
+            - ``query``：原始查询文本
+            - ``vector_results``：向量检索结果列表
+            - ``graph_results``：图谱检索结果列表
+            - ``fused_results``：融合排序结果（当前 ``RAGGenerator`` 未使用，仅保留供扩展/分析）
+            - ``parameters``：包含 ``vector_top_k``、``graph_hops``、``weights``（``vector``/``graph`` 权重）
         """
         top_k = vector_top_k or self._vector_top_k
         hops = graph_hops or self._graph_hops
@@ -77,7 +82,7 @@ class HybridRetriever:
         vector_results = await self._retrieve_vector(query, top_k)
         graph_results = await self._retrieve_graph(query, hops, include_cases, include_regulations)
         
-        # 融合结果
+        # 融合结果（生成器当前仅使用 vector/graph 与 parameters，未读取 fused_results）
         fused_results = self._fuse_results(vector_results, graph_results)
         
         logger.info(
@@ -338,7 +343,12 @@ class HybridRetriever:
             graph_results: 图谱检索结果
             
         Returns:
-            融合后的结果
+            字典包含：
+            - ``combined_ranking``：列表，每项含 ``source``（``vector``/``graph``）、``content``、
+              ``metadata``、``original_score``、``fused_score``（原始分乘权重）、``rank``（分支内序号）、
+              ``final_rank``（合并排序后序号）
+            - ``vector_weight`` / ``graph_weight``：使用的权重
+            - ``total_items``：合并后条目总数
         """
         w_vector = self._fusion_weights.get("vector", 0.6)
         w_graph = self._fusion_weights.get("graph", 0.4)

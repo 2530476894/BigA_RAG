@@ -1,5 +1,7 @@
 """
 Pydantic Models - API 请求/响应与 RAG 结构化输出
+
+供 FastAPI ``response_model`` / OpenAPI 使用，与 ``app.main`` 路由及 ``RAGGenerator`` 输出字段对齐。
 """
 
 from typing import List, Literal, Optional
@@ -72,7 +74,11 @@ class ValidationFlags(BaseModel):
 
 
 class RAGQueryResponse(BaseModel):
-    """RAG 查询响应模型"""
+    """
+    RAG 查询响应模型。
+
+    当前无 LLM 生成路径下，``basis_clauses``、``related_cases`` 等可能为空列表，以占位实现为准。
+    """
 
     model_config = ConfigDict(
         json_schema_extra={

@@ -1,7 +1,8 @@
 """
 Generator Module - 基于检索结果的 RAG 响应生成（无 LLM 最小闭环）
 
-用途：将混合检索结果组装为符合 Schema 的 RAGQueryResponse
+用途：将 ``HybridRetriever.retrieve`` 返回的检索结果组装为 ``RAGQueryResponse``；
+可选注入 ``llm_client`` 供后续扩展，当前默认不调用大模型。
 """
 
 from typing import Any, Dict, List, Optional
@@ -19,6 +20,12 @@ logger = get_logger("generator")
 
 
 def _build_trace_paths(retrieval_results: Dict[str, Any]) -> List[TracePath]:
+    """
+    从检索结果构造溯源路径列表。
+
+    读取 ``vector_results``、``graph_results``；向量路径汇总来源与条数，图谱路径合并前若干条的
+    ``path_description`` 与 ``nodes``（各取最多 3 条以控制体积）。
+    """
     trace_paths: List[TracePath] = []
     vector_results = retrieval_results.get("vector_results", [])
     graph_results = retrieval_results.get("graph_results", [])
@@ -53,6 +60,9 @@ def _confidence_from_retrieval(
     vector_results: List[Dict[str, Any]],
     graph_results: List[Dict[str, Any]],
 ) -> float:
+    """
+    基于检索条数给出占位置信度（启发式）：基准 0.5，向量与图谱分支按条数增量 capped，上限 0.95。
+    """
     confidence = 0.5
     if vector_results:
         confidence += 0.2 * min(len(vector_results), 3) / 3
@@ -62,13 +72,14 @@ def _confidence_from_retrieval(
 
 
 class RAGGenerator:
-    """基于检索结果生成 RAG 响应；可选保留 llm_client 供后续扩展。"""
+    """基于检索结果生成 RAG 响应；可选保留 ``llm_client`` 供后续扩展。"""
 
     def __init__(self, llm_client: Optional[Any] = None):
         self._llm_client = llm_client
         logger.info("rag_generator_initialized", has_llm=llm_client is not None)
 
     def set_llm_client(self, llm_client: Any) -> None:
+        """设置或替换大模型客户端实例（当前 ``generate`` 未调用，仅预留）。"""
         self._llm_client = llm_client
 
     async def generate(
@@ -76,6 +87,20 @@ class RAGGenerator:
         question: str,
         retrieval_results: Dict[str, Any],
     ) -> RAGQueryResponse:
+        """
+        将检索结果格式化为 ``RAGQueryResponse``。
+
+        若向量与图谱结果均为空，返回固定提示与置信度 0、空溯源；
+        否则拼接 ``format_audit_context`` 文本为 ``answer``，``basis_clauses`` 与 ``related_cases`` 当前保持空列表，
+        ``validation_flags`` 中注明占位生成说明。
+
+        Args:
+            question: 用户问题
+            retrieval_results: 须含 ``vector_results``、``graph_results``，可选 ``parameters``（与检索器返回一致）
+
+        Returns:
+            符合 Schema 的响应模型实例
+        """
         vector_results = retrieval_results.get("vector_results", [])
         graph_results = retrieval_results.get("graph_results", [])
 
@@ -142,4 +167,5 @@ class RAGGenerator:
 
 
 def get_generator(llm_client: Optional[Any] = None) -> RAGGenerator:
+    """工厂函数：创建 ``RAGGenerator``；``llm_client`` 默认为 ``None``（无 LLM 占位生成）。"""
     return RAGGenerator(llm_client=llm_client)

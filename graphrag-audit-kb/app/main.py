@@ -27,10 +27,10 @@ logger = get_logger("main")
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """
-    应用生命周期管理
-    
-    Yields:
-        None
+    应用生命周期管理。
+
+    进入时在启动阶段记录日志并对 Neo4j、Chroma 做预连接健康检查（失败仅告警，不阻塞启动）。
+    ``yield`` 之后应用处于运行期，接受请求；进程退出或关闭时在 ``yield`` 之后执行收尾日志。
     """
     # 启动时执行
     logger.info("application_starting", version="0.1.0")
@@ -81,10 +81,11 @@ app.add_middleware(
 @app.get("/health", tags=["Health"])
 async def health_check():
     """
-    健康检查端点
-    
+    健康检查端点。
+
     Returns:
-        服务健康状态
+        含 ``status`` 与 ``services``。当且仅当 Neo4j 与 Chroma 均报告 healthy 时，
+        顶层 ``status`` 为 ``healthy``；任一不可用则为 ``degraded``，并在 ``services`` 中分别给出子状态。
     """
     neo4j_healthy = False
     chroma_healthy = False
@@ -139,15 +140,16 @@ async def rag_query(
     settings: Settings = Depends(get_settings),
 ):
     """
-    RAG 查询接口
-    
-    基于知识图谱和向量检索的审计合规问答
-    
+    RAG 查询接口：基于知识图谱和向量检索的审计合规问答。
+
+    处理步骤：1) 生成短 ``task_id``；2) 使用 ``AuditLogContext`` 包裹请求链路以便审计追踪；
+    3) 混合检索；4) 基于检索结果生成响应（当前为无 LLM 占位生成，见 ``RAGGenerator``）。
+
     Args:
         request: RAG 查询请求
-        
+
     Returns:
-        RAG 查询响应，包含依据条款、关联案例、置信度、溯源路径等
+        ``RAGQueryResponse``：依据条款、关联案例、置信度、溯源路径等（部分字段随生成器实现可能为空列表）。
     """
     # 生成任务 ID 用于审计追踪
     import uuid
@@ -208,12 +210,12 @@ async def rag_query(
 @app.get("/api/v1/graph/stats", tags=["Graph"])
 async def get_graph_stats():
     """
-    获取图谱统计信息
+    获取图谱统计信息（节点总数、标签种数、有向关系总数、关系类型种数）。
     """
     try:
         neo4j_service = get_neo4j_service()
         
-        # 查询节点和关系统计
+        # 统计所有节点实例个数及不同标签组合的种类数（distinct labels）
         stats_query = """
         MATCH ()
         RETURN 
@@ -222,6 +224,7 @@ async def get_graph_stats():
         """
         node_stats = neo4j_service.execute_cypher(stats_query)
         
+        # 统计有向关系条数及不同关系类型的种类数
         rel_query = """
         MATCH ()-[r]->()
         RETURN 
@@ -247,9 +250,12 @@ async def get_graph_stats():
 @app.post("/api/v1/graph/init-schema", tags=["Graph"])
 async def initialize_graph_schema():
     """
-    初始化图谱 Schema（创建约束和索引）
-    
-    注意：仅需在首次部署时调用
+    初始化图谱 Schema（幂等执行 Cypher：创建约束与索引）。
+
+    注意：仅需在首次部署或变更 Schema 后调用；副作用为在 Neo4j 中执行 DDL，已存在时可能跳过并记日志。
+
+    Returns:
+        成功消息与 ``status: success`` 的 JSON 对象。
     """
     try:
         neo4j_service = get_neo4j_service()
@@ -272,7 +278,10 @@ async def initialize_graph_schema():
 @app.get("/api/v1/vector/stats", tags=["Vector"])
 async def get_vector_stats():
     """
-    获取向量库统计信息
+    获取向量库统计信息。
+
+    Returns:
+        ``VectorService.health_check()`` 的字典（如 ``status``、``collection``、``document_count`` 等）。
     """
     try:
         vector_service = get_vector_service()

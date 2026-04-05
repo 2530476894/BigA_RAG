@@ -1,6 +1,5 @@
 """
 End-to-End Pipeline Test - GraphRAG 审计问答全链路测试
-
 用途：验证从数据导入、混合检索到 RAG 生成的完整流程
 关键依赖：pytest, pytest-asyncio, fastapi.testclient
 审计场景映射：虚增成本审计案例、法规条款关联、置信度校验

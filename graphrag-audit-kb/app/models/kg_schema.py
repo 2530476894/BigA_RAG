@@ -140,7 +140,8 @@ RELATIONSHIP_PROPERTY_SCHEMAS: Dict[str, Dict[str, str]] = {
 }
 
 # ==================== Index Definitions ====================
-# Neo4j 索引定义（用于优化查询性能）
+# Neo4j 索引定义（用于优化查询性能）。每项为 dict：
+# - ``label``：节点标签；``properties``：需建 B-tree 索引的属性名列表（每个属性一条 CREATE INDEX 语句）
 INDEX_DEFINITIONS: List[dict] = [
     {"label": "Organization", "properties": ["name", "registration_code"]},
     {"label": "Regulation", "properties": ["title", "clause_id"]},
@@ -151,7 +152,8 @@ INDEX_DEFINITIONS: List[dict] = [
 ]
 
 # ==================== Constraint Definitions ====================
-# Neo4j 约束定义（用于保证数据完整性）
+# Neo4j 约束定义（用于保证数据完整性）。每项为 dict：
+# - ``label``：节点标签；``property``：唯一约束属性名；``type``：当前仅使用 ``unique``
 CONSTRAINT_DEFINITIONS: List[dict] = [
     {"label": "Organization", "property": "id", "type": "unique"},
     {"label": "Regulation", "property": "id", "type": "unique"},
@@ -184,10 +186,10 @@ def get_relationship_schema(rel_type: str) -> Dict[str, str]:
 
 def generate_cypher_constraints() -> List[str]:
     """
-    生成 Neo4j 约束创建语句
-    
+    生成 Neo4j 5.x 风格唯一约束创建语句（``CREATE CONSTRAINT IF NOT EXISTS FOR (n:Label) ...``）。
+
     Returns:
-        Cypher 语句列表
+        可逐条执行的 Cypher 字符串列表
     """
     statements = []
     for constraint in CONSTRAINT_DEFINITIONS:
@@ -200,10 +202,10 @@ def generate_cypher_constraints() -> List[str]:
 
 def generate_cypher_indexes() -> List[str]:
     """
-    生成 Neo4j 索引创建语句
-    
+    生成 Neo4j 5.x 风格索引创建语句（``CREATE INDEX IF NOT EXISTS FOR (n:Label) ON (n.prop)``）。
+
     Returns:
-        Cypher 语句列表
+        可逐条执行的 Cypher 字符串列表
     """
     statements = []
     for index in INDEX_DEFINITIONS:

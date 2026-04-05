@@ -20,8 +20,7 @@ logger = get_logger("neo4j_service")
 
 class Neo4jService:
     """
-    Neo4j 图数据库服务类
-    采用单例模式，提供连接池管理和 Cypher 执行接口
+    Neo4j 图数据库服务类：进程内单例，首次实例化时建立驱动并连接；提供会话、事务与 Cypher 执行接口。
     """
     
     _instance: Optional["Neo4jService"] = None
@@ -237,7 +236,7 @@ class Neo4jService:
             properties: 关系属性（可选）
             
         Returns:
-            是否创建成功
+            是否创建成功（使用 ``MERGE``：匹配到已有关系则复用，未设置 ``SET`` 覆盖全部属性）。
         """
         query = f"""
         MATCH (source:{source_label} {{id: $source_id}})
@@ -281,7 +280,7 @@ class Neo4jService:
             parameters: 查询参数
             
         Returns:
-            查询结果列表
+            查询结果列表：每条为将 Neo4j ``Record`` 转为的 ``dict``（键为 RETURN 别名）。
         """
         with self.session() as session:
             result = session.run(query, parameters or {})
@@ -307,7 +306,9 @@ class Neo4jService:
             relationship_types: 限制的关系类型列表（可选）
             
         Returns:
-            关联子图数据
+            关联子图数据（每条记录为从 ``start`` 出发、长度 1..hops 的路径；总条数上限 50）。
+
+        说明：未指定 ``relationship_types`` 时使用 ``-[*1..hops]-``，包含任意关系类型。
         """
         # 构建可变长度的关系路径
         rel_pattern = ""
@@ -390,8 +391,9 @@ class Neo4jService:
     
     def initialize_schema(self):
         """
-        初始化图谱 schema（创建约束和索引）
-        应在首次部署时调用
+        初始化图谱 schema（创建约束和索引）。应在首次部署或 Schema 变更后调用。
+
+        单条语句失败时记录 ``constraint_creation_skipped`` / ``index_creation_skipped``（幂等/已存在属常见情况）。
         """
         logger.info("neo4j_schema_initialization_started")
         
@@ -456,8 +458,9 @@ _neo4j_service_instance = None
 
 def get_neo4j_service() -> Neo4jService:
     """
-    获取 Neo4j 服务单例（延迟初始化）
-    用于依赖注入
+    获取 Neo4j 服务单例（首次调用时实例化）；用于依赖注入。
+
+    模块级 ``neo4j_service`` 变量为兼容占位（``None``），请优先使用本函数。
     """
     global _neo4j_service_instance
     if _neo4j_service_instance is None:

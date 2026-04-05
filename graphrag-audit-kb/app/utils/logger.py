@@ -67,8 +67,8 @@ def get_logger(name: str = __name__) -> structlog.BoundLogger:
 # 审计专用日志上下文管理器
 class AuditLogContext:
     """
-    审计日志上下文管理器
-    用于追踪特定审计任务的完整执行链路
+    审计日志上下文管理器：进入时绑定 ``task_id``/``operation`` 并打 ``audit_task_started``；
+    退出时若无异常打 ``audit_task_completed``，否则打 ``audit_task_failed``。
     """
     
     def __init__(self, task_id: str, operation: str):
@@ -97,7 +97,7 @@ class AuditLogContext:
         return False
     
     def log_retrieval(self, query: str, result_count: int, source: str):
-        """记录检索操作"""
+        """记录检索操作：``source`` 标识向量/图谱等来源。"""
         self.logger.info(
             "retrieval_executed",
             query=query,
@@ -106,7 +106,7 @@ class AuditLogContext:
         )
     
     def log_generation(self, prompt_tokens: int, response_tokens: int):
-        """记录生成操作"""
+        """记录生成操作：占位 token 计数便于后续接入 LLM 时对齐。"""
         self.logger.info(
             "generation_executed",
             prompt_tokens=prompt_tokens,
@@ -114,7 +114,7 @@ class AuditLogContext:
         )
     
     def log_validation(self, validation_type: str, passed: bool, details: dict):
-        """记录校验操作（金额/时间二次校验）"""
+        """记录校验操作：``validation_type`` 区分金额/时间等；``details`` 为结构化补充信息。"""
         self.logger.info(
             "validation_executed",
             validation_type=validation_type,
@@ -123,5 +123,5 @@ class AuditLogContext:
         )
 
 
-# 全局 logger 实例
+# 模块级默认 logger（无模块名绑定，供本包内简单引用）
 logger = get_logger()

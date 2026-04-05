@@ -1,5 +1,7 @@
 """
 Models Package - 数据模型包
+
+本文件仅聚合导出 ``schema`` 与 ``kg_schema``；数据定义与 Cypher 生成逻辑在对应子模块中。
 """
 
 from app.models.schema import (
