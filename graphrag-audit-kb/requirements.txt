@@ -17,6 +17,9 @@ chromadb==0.4.22
 # Graph Database
 neo4j==5.16.0
 
+# LLM & Embedding (DashScope - Qwen)
+dashscope==1.14.1
+
 # Utilities
 httpx==0.26.0
 tenacity==8.2.3

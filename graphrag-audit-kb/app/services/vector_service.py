@@ -1,8 +1,8 @@
 """
 Vector Service - 向量数据库服务
 
-用途：提供 Chroma 向量库的索引/查询封装
-关键依赖：chromadb
+用途：提供 Chroma 向量库的索引/查询封装，集成 Qwen Embedding
+关键依赖：chromadb, dashscope
 审计场景映射：文档片段向量化存储、相似度检索、混合检索的向量部分
 可扩展性：预留 Milvus 等其他向量库的适配接口
 
@@ -22,8 +22,8 @@ logger = get_logger("vector_service")
 
 class VectorService:
     """
-    向量数据库服务类：封装 ChromaDB 持久化客户端与集合；``add_documents`` / ``similarity_search``
-    在未接入自定义嵌入模型时依赖 Chroma 默认嵌入与查询管线（见实现内日志）。
+    向量数据库服务类：封装 ChromaDB 持久化客户端与集合；
+    集成 Qwen Embedding (text-embedding-v3) 进行向量化。
     """
     
     _instance: Optional["VectorService"] = None
@@ -48,11 +48,12 @@ class VectorService:
         logger.info(
             "vector_service_initialized",
             persist_dir=settings.chroma_persist_dir,
-            collection=settings.chroma_collection
+            collection=settings.chroma_collection,
+            embedding_model=settings.embedding_model
         )
     
     def _initialize(self):
-        """初始化 Chroma 客户端和集合"""
+        """初始化 Chroma 客户端、集合和 Embedding 函数"""
         try:
             # 创建持久化目录
             os.makedirs(settings.chroma_persist_dir, exist_ok=True)
@@ -72,13 +73,41 @@ class VectorService:
                 metadata={"hnsw:space": "cosine"},  # 使用余弦相似度
             )
             
-            # TODO: 初始化嵌入函数（如 OpenAI 兼容 Embeddings API）
+            # 初始化 Qwen Embedding
+            self._initialize_embedding()
             
             logger.info("chroma_client_initialized")
             
         except Exception as e:
             logger.error("chroma_initialization_failed", error=str(e))
             raise
+    
+    def _initialize_embedding(self):
+        """初始化 Qwen Embedding 函数"""
+        try:
+            from app.llm import create_qwen_embedding
+            
+            api_key = settings.dashscope_api_key or settings.llm_api_key
+            if not api_key:
+                logger.warning("dashscope_api_key_not_configured_using_default")
+                # 如果没有配置 API Key，使用占位方案
+                self._embedding_function = None
+                return
+            
+            self._embedding_function = create_qwen_embedding(
+                api_key=api_key,
+                model=settings.embedding_model
+            )
+            
+            logger.info(
+                "qwen_embedding_initialized",
+                model=settings.embedding_model,
+                dimension=self._embedding_function.dimension
+            )
+            
+        except Exception as e:
+            logger.warning("embedding_initialization_failed", error=str(e))
+            self._embedding_function = None
     
     def add_documents(
         self,
@@ -87,7 +116,7 @@ class VectorService:
         ids: Optional[List[str]] = None,
     ) -> List[str]:
         """
-        添加文档到向量库
+        添加文档到向量库（使用 Qwen Embedding 向量化）
         
         Args:
             documents: 文档内容列表
@@ -96,8 +125,6 @@ class VectorService:
             
         Returns:
             添加的文档 ID 列表
-
-        说明：当前未传入 ``embeddings`` 时由 Chroma 在服务端生成嵌入（与 ``using_placeholder_embeddings`` 警告一致）。
         """
         if not self._collection:
             raise RuntimeError("Vector collection not initialized")
@@ -111,25 +138,33 @@ class VectorService:
             metadatas = [{} for _ in documents]
         
         try:
-            # TODO: 集成真实嵌入模型
-            # 当前使用占位方案，需要实现嵌入生成逻辑
-            # embeddings = self._embedding_function.embed_documents(documents)
-            
-            # 临时方案：使用空嵌入（仅用于测试结构）
-            # 实际使用时需替换为真实嵌入计算
-            logger.warning("using_placeholder_embeddings", count=len(documents))
+            # 使用 Qwen Embedding 生成向量
+            embeddings = None
+            if self._embedding_function:
+                import asyncio
+                embeddings = asyncio.run(
+                    self._embedding_function.embed_documents(documents)
+                )
+                logger.info(
+                    "documents_embedded_with_qwen",
+                    count=len(documents),
+                    dimension=len(embeddings[0]) if embeddings else 0
+                )
+            else:
+                logger.warning("using_placeholder_embeddings_no_api_key", count=len(documents))
             
             self._collection.add(
                 documents=documents,
                 metadatas=metadatas,
                 ids=ids,
-                # embeddings=embeddings,  # 真实嵌入
+                embeddings=embeddings,  # 使用真实嵌入或 None
             )
             
             logger.info(
                 "documents_added",
                 count=len(documents),
-                collection=settings.chroma_collection
+                collection=settings.chroma_collection,
+                has_embeddings=embeddings is not None
             )
             
             return ids
@@ -145,7 +180,7 @@ class VectorService:
         filter_metadata: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
-        相似度检索
+        相似度检索（使用 Qwen Embedding 向量化查询）
         
         Args:
             query: 查询文本
@@ -161,15 +196,32 @@ class VectorService:
             raise RuntimeError("Vector collection not initialized")
         
         try:
-            # TODO: 集成真实嵌入模型
-            # query_embedding = self._embedding_function.embed_query(query)
+            # 使用 Qwen Embedding 生成查询向量
+            query_embedding = None
+            if self._embedding_function:
+                import asyncio
+                query_embedding = [asyncio.run(
+                    self._embedding_function.embed_query(query)
+                )]
             
-            results = self._collection.query(
-                query_texts=[query],
-                n_results=k,
-                where=filter_metadata,
-                include=["documents", "metadatas", "distances"],
-            )
+            # 如果有嵌入则使用向量查询，否则降级为文本查询
+            if query_embedding and query_embedding[0]:
+                results = self._collection.query(
+                    query_embeddings=query_embedding,
+                    n_results=k,
+                    where=filter_metadata,
+                    include=["documents", "metadatas", "distances"],
+                )
+                logger.debug("vector_search_with_qwen_embedding", query=query[:50])
+            else:
+                # 降级方案：使用文本查询（Chroma 内部会尝试生成嵌入）
+                results = self._collection.query(
+                    query_texts=[query],
+                    n_results=k,
+                    where=filter_metadata,
+                    include=["documents", "metadatas", "distances"],
+                )
+                logger.warning("fallback_to_text_query_no_embedding")
             
             # 格式化结果
             formatted_results = []
@@ -191,7 +243,8 @@ class VectorService:
             logger.info(
                 "similarity_search_executed",
                 query=query[:50] + "..." if len(query) > 50 else query,
-                result_count=len(formatted_results)
+                result_count=len(formatted_results),
+                has_embedding=query_embedding is not None
             )
             
             return formatted_results

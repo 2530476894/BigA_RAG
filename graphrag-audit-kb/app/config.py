@@ -28,11 +28,14 @@ class Settings(BaseSettings):
     )
     
     # ==================== LLM Configuration ====================
-    llm_provider: str = Field(default="openai", description="LLM 提供商")
-    llm_model: str = Field(default="gpt-4o", description="LLM 模型名称")
-    llm_api_key: str = Field(default="", description="LLM API 密钥")
+    llm_provider: str = Field(default="qwen", description="LLM 提供商")
+    llm_model: str = Field(default="qwen-plus", description="LLM 模型名称")
+    llm_api_key: str = Field(default="", description="LLM API 密钥 (DASHSCOPE_API_KEY)")
     llm_base_url: Optional[str] = Field(default=None, description="LLM API 基础 URL")
     llm_temperature: float = Field(default=0.3, ge=0.0, le=2.0, description="LLM 温度参数")
+    
+    # ==================== DashScope Configuration ====================
+    dashscope_api_key: str = Field(default="", description="阿里云 DashScope API Key")
     
     # ==================== Neo4j Configuration ====================
     neo4j_uri: str = Field(default="bolt://localhost:7687", description="Neo4j 连接 URI")
@@ -45,7 +48,7 @@ class Settings(BaseSettings):
     chroma_collection: str = Field(default="audit_embeddings", description="Chroma 集合名")
     
     # ==================== Embedding Configuration ====================
-    embedding_model: str = Field(default="text-embedding-3-small", description="嵌入模型")
+    embedding_model: str = Field(default="text-embedding-v3", description="嵌入模型")
     embedding_dimension: int = Field(default=1536, description="嵌入维度")
     
     # ==================== RAG Configuration ====================

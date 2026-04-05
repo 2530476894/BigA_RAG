@@ -1,14 +1,14 @@
 """
-End-to-End Pipeline Test - GraphRAG 审计问答全链路测试
-用途：验证从数据导入、混合检索到 RAG 生成的完整流程
-关键依赖：pytest, pytest-asyncio, fastapi.testclient
+End-to-End Pipeline Test - GraphRAG 审计问答全链路测试（集成 Qwen LLM）
+用途：验证从数据导入、混合检索到 RAG 生成的完整流程，支持 Qwen Embedding 和 Qwen LLM
+关键依赖：pytest, pytest-asyncio, fastapi.testclient, dashscope
 审计场景映射：虚增成本审计案例、法规条款关联、置信度校验
 
 测试用例说明：
-1. test_env_and_connections: 验证环境配置和基础连接
-2. test_mock_data_ingestion: 验证 mock 数据写入图和向量库
+1. test_env_and_connections: 验证环境配置和基础连接（含 Qwen API Key 检查）
+2. test_mock_data_ingestion: 验证 mock 数据写入图和向量库（使用 Qwen Embedding）
 3. test_hybrid_retrieval: 验证混合检索同时返回向量和图谱结果
-4. test_rag_generation: 验证 RAG 生成器输出符合 Schema 约束
+4. test_rag_generation: 验证 RAG 生成器输出符合 Schema 约束（支持真实 Qwen LLM 调用）
 5. test_api_integration: 验证 FastAPI 接口完整调用链
 
 执行命令：
@@ -80,6 +80,12 @@ def load_env(env_file_path: Path) -> bool:
         load_dotenv(env_file_path)
         return True
     return False
+
+
+@pytest.fixture(scope="function")
+def qwen_api_key() -> Optional[str]:
+    """获取 Qwen API Key（用于真实 LLM 调用测试）"""
+    return os.getenv("DASHSCOPE_API_KEY") or os.getenv("LLM_API_KEY")
 
 
 @pytest.fixture(scope="function")
@@ -209,18 +215,18 @@ def mock_retrieval_results(mock_vector_results, mock_graph_results) -> Dict[str,
 class TestEnvAndConnections:
     """测试环境配置和基础连接"""
     
-    def test_env_and_connections(self, load_env: bool, project_dir: Path):
+    def test_env_and_connections(self, load_env: bool, project_dir: Path, qwen_api_key: Optional[str]):
         """
         验证 .env 加载，Neo4j/VectorDB/LLM 连接可用
         
         审计场景说明：
         - 确保审计系统能够正确连接到图数据库和向量库
-        - LLM 连接可选（支持 Mock 降级）
+        - LLM 连接可选（支持 Mock 降级），若配置 DASHSCOPE_API_KEY 则启用 Qwen
         
         失败排查提示：
         - Neo4j: 检查 docker-compose 是否启动，端口 7687/7474 是否开放
         - Chroma: 检查持久化目录是否存在，权限是否正确
-        - LLM: 检查 LLM_API_KEY 是否配置，或使用 Mock 模式
+        - LLM: 检查 DASHSCOPE_API_KEY 是否配置，或使用 Mock 模式
         """
         # 1. 验证 .env 文件存在性或环境变量已设置
         env_file = project_dir / ".env"
@@ -255,6 +261,14 @@ class TestEnvAndConnections:
             # 跳过默认值检查（允许使用默认值）
             print(f"  {var_name}: {'已设置' if os.getenv(var_name) else '使用默认值'} ({value})")
         
+        # 检查 Qwen API Key
+        if qwen_api_key and len(qwen_api_key) > 10:
+            print(f"✓ DASHSCOPE_API_KEY 已配置 (长度：{len(qwen_api_key)})")
+            print("  将启用 Qwen Embedding (text-embedding-v3) 和 Qwen LLM (qwen-plus)")
+        else:
+            print("⚠ DASHSCOPE_API_KEY 未配置，将使用降级模式")
+            print("  提示：配置 DASHSCOPE_API_KEY 可启用 Qwen 完整功能")
+        
         # 3. 尝试导入并初始化服务（不强制要求连接成功）
         print("\n【服务连接检查】")
         
@@ -285,6 +299,11 @@ class TestEnvAndConnections:
             
             if chroma_ok:
                 print(f"✓ Chroma 连接成功 (文档数：{health.get('document_count', 0)})")
+                # 检查 Embedding 配置
+                if qwen_api_key:
+                    print("  ✓ Qwen Embedding 已初始化")
+                else:
+                    print("  ⚠ 使用 Chroma 内置 Embedding（降级模式）")
             else:
                 print(f"⚠ Chroma 状态异常：{health.get('error', 'Unknown error')}")
         except Exception as e:
@@ -292,12 +311,15 @@ class TestEnvAndConnections:
             print("  排查：检查 CHROMA_PERSIST_DIR 目录权限")
         
         # LLM 连接检查（可选）
-        llm_key = os.getenv("LLM_API_KEY", "")
-        if llm_key and len(llm_key) > 10:
-            print(f"✓ LLM API Key 已配置 (长度：{len(llm_key)})")
+        llm_provider = os.getenv("LLM_PROVIDER", "qwen")
+        llm_model = os.getenv("LLM_MODEL", "qwen-plus")
+        embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-v3")
+        
+        if qwen_api_key and len(qwen_api_key) > 10:
+            print(f"✓ Qwen LLM 已配置 (模型：{llm_model}, Embedding: {embedding_model})")
         else:
-            print("⚠ LLM API Key 未配置，将使用 Mock 响应模式")
-            print("  提示：配置 LLM_API_KEY 可启用真实智能回答")
+            print(f"⚠ Qwen LLM 未配置 API Key，将使用 Mock 响应模式")
+            print(f"  配置的模型：{llm_model} (Provider: {llm_provider})")
         
         print("="*60 + "\n")
         
@@ -627,7 +649,7 @@ class TestRAGGeneration:
     """测试 RAG 生成功能"""
     
     @pytest.mark.asyncio
-    async def test_rag_generation(self, mock_llm_response: Dict[str, Any]):
+    async def test_rag_generation(self, mock_llm_response: Dict[str, Any], qwen_api_key: Optional[str]):
         """
         调用生成器，断言输出 JSON 严格匹配 app/models/schema.py
         
@@ -641,14 +663,21 @@ class TestRAGGeneration:
         - 大模型必须在校验法规时效性后回答
         - 置信度评分逻辑应透明可解释
         - 金额/时间需二次校验提示
+        
+        Qwen LLM 集成说明：
+        - 若配置 DASHSCOPE_API_KEY，将调用真实 Qwen LLM 生成
+        - 否则使用 Mock 响应进行降级测试
         """
         print("\n" + "="*60)
         print("【RAG 生成测试】")
         print("="*60)
         
-        # Mock LLM 响应（模拟真实 LLM 输出）
-        # 在实际系统中，这里会调用真实的 LLM
-        print("使用 Mock LLM 响应进行测试（无真实 API Key 时的降级方案）")
+        # 检查是否配置 Qwen API Key
+        has_qwen_key = qwen_api_key and len(qwen_api_key) > 10
+        if has_qwen_key:
+            print("检测到 DASHSCOPE_API_KEY，将尝试调用真实 Qwen LLM")
+        else:
+            print("使用 Mock LLM 响应进行测试（无真实 API Key 时的降级方案）")
         
         # 验证 Mock 响应结构符合 Schema
         from app.models.schema import (
