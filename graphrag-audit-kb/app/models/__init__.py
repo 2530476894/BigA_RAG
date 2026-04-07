@@ -12,6 +12,7 @@ from app.models.schema import (
     RelatedCase,
     TracePath,
     ValidationFlags,
+    RetrievalEvidenceItem,
 )
 
 from app.models.kg_schema import (
@@ -35,6 +36,7 @@ __all__ = [
     "RelatedCase",
     "TracePath",
     "ValidationFlags",
+    "RetrievalEvidenceItem",
     "NODE_LABELS",
     "RELATIONSHIP_TYPES",
     "NODE_PROPERTY_SCHEMAS",

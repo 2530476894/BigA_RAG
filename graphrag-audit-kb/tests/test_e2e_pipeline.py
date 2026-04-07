@@ -96,7 +96,7 @@ def mock_llm_response() -> Dict[str, Any]:
     审计场景：虚增成本问题必须关联《审计法》或《政府采购法》条款
     """
     return {
-        "answer": "根据审计相关法规，某工程审计中发现虚增成本主要违反以下规定：\n\n"
+        "answer": "根据审计相关法规[1]，某工程审计中发现虚增成本主要违反以下规定：\n\n"
                   "1. 《中华人民共和国审计法》第二十二条：审计机关对政府投资和以政府投资为主的建设项目的预算执行情况和决算进行审计监督。\n"
                   "2. 《中华人民共和国招标投标法》第三条：必须进行招标的工程建设项目范围。\n"
                   "3. 《财政违法行为处罚处分条例》第九条：虚列支出、虚增成本的处罚规定。\n\n"
@@ -146,7 +146,26 @@ def mock_llm_response() -> Dict[str, Any]:
             "建议重点关注招投标环节的合规性",
             "注意工程变更的审批程序",
             "核实大额资金往来的真实性"
-        ]
+        ],
+        "retrieval_evidence": [
+            {
+                "ref_index": 1,
+                "chunk_id": "mock-chunk-1",
+                "text": "审计机关对政府投资和以政府投资为主的建设项目的预算执行情况和决算进行审计监督。",
+                "source": "中华人民共和国审计法",
+                "score": 0.92,
+                "metadata": {"clause_id": "第二十二条"},
+            },
+            {
+                "ref_index": 2,
+                "chunk_id": "mock-chunk-2",
+                "text": "在中华人民共和国境内进行下列工程建设项目…必须进行招标。",
+                "source": "中华人民共和国招标投标法",
+                "score": 0.85,
+                "metadata": {"clause_id": "第三条"},
+            },
+        ],
+        "answer_cited_vector_refs": [1],
     }
 
 
@@ -163,12 +182,14 @@ def mock_vector_results() -> list:
             "source": "中华人民共和国审计法",
             "score": 0.92,
             "metadata": {"clause_id": "第二十二条"},
+            "chunk_id": "mock-chunk-1",
         },
         {
             "chunk": "在中华人民共和国境内进行下列工程建设项目包括项目的勘察、设计、施工、监理以及与工程建设有关的重要设备、材料等的采购，必须进行招标。",
             "source": "中华人民共和国招标投标法",
             "score": 0.85,
             "metadata": {"clause_id": "第三条"},
+            "chunk_id": "mock-chunk-2",
         },
     ]
 
@@ -197,6 +218,7 @@ def mock_retrieval_results(mock_vector_results, mock_graph_results) -> Dict[str,
         "query": "政府投资建设项目审计的主要法律依据是什么？",
         "vector_results": mock_vector_results,
         "graph_results": mock_graph_results,
+        "entities": [],
         "fused_results": {
             "combined_ranking": [],
             "vector_weight": 0.6,
@@ -518,19 +540,22 @@ class TestHybridRetrieval:
                 "chunk": "审计机关对政府投资和以政府投资为主的建设项目的预算执行情况和决算进行审计监督。",
                 "source": "audit_regulations_sample.txt",
                 "score": 0.92,
-                "metadata": {"type": "regulation", "law": "审计法"}
+                "metadata": {"type": "regulation", "law": "审计法"},
+                "chunk_id": "mock-hybrid-1",
             },
             {
                 "chunk": "虚列支出、虚增成本的，责令改正，调整有关会计账目，追回有关财政资金。",
                 "source": "audit_regulations_sample.txt",
                 "score": 0.88,
-                "metadata": {"type": "regulation", "law": "财政违法行为处罚处分条例"}
+                "metadata": {"type": "regulation", "law": "财政违法行为处罚处分条例"},
+                "chunk_id": "mock-hybrid-2",
             },
             {
                 "chunk": "XX 公司虚增利润案：该公司通过虚构交易、提前确认收入等方式虚增利润 5000 万元。",
                 "source": "audit_case_sample.json",
                 "score": 0.85,
-                "metadata": {"type": "case", "case_id": "case_001"}
+                "metadata": {"type": "case", "case_id": "case_001"},
+                "chunk_id": "mock-hybrid-3",
             }
         ]
         
@@ -817,6 +842,8 @@ class TestAPIIntegration:
             "related_cases",
             "confidence_score",
             "trace_paths",
+            "retrieval_evidence",
+            "answer_cited_vector_refs",
             "validation_flags",
             "risk_level",
             "compliance_suggestions",
@@ -916,6 +943,10 @@ class TestHybridRetrieverUnit:
             assert "vector_results" in results
             assert "graph_results" in results
             assert "fused_results" in results
+            assert "entities" in results
+        except Exception:
+            pytest.skip("retrieve 依赖外部服务")
+
     @pytest.mark.asyncio
     async def test_entity_extraction_accuracy(self, sample_question):
         """测试实体识别准确性"""
@@ -974,6 +1005,8 @@ class TestRAGGeneratorUnit:
         assert 0.0 <= response.confidence_score <= 1.0
         assert isinstance(response.validation_flags, ValidationFlags)
         assert isinstance(response.risk_level, RiskLevel)
+        assert len(response.retrieval_evidence) == 2
+        assert response.retrieval_evidence[0].ref_index == 1
 
 
 class TestResponseSchemaUnit:
@@ -1018,6 +1051,8 @@ class TestAuditComplianceUnit:
             "related_cases",
             "confidence_score",
             "trace_paths",
+            "retrieval_evidence",
+            "answer_cited_vector_refs",
             "validation_flags",
             "risk_level",
             "compliance_suggestions",

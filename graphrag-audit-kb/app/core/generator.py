@@ -6,7 +6,8 @@ Generator Module - 基于检索结果的 RAG 响应生成（集成 Qwen LLM）
 审计场景映射：法规条款解释、案例关联分析、风险事件评估
 """
 
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.config import settings
 from app.utils.logger import get_logger
@@ -16,9 +17,57 @@ from app.models.schema import (
     TracePath,
     ValidationFlags,
     RiskLevel,
+    RetrievalEvidenceItem,
+    BasisClause,
+    RelatedCase,
 )
 
 logger = get_logger("generator")
+
+_CLAUSE_PREVIEW_LEN = 200
+
+
+def _slice_vector_for_prompt(
+    vector_results: List[Dict[str, Any]],
+    vector_top_k: int,
+) -> List[Dict[str, Any]]:
+    return vector_results[:vector_top_k]
+
+
+def _build_retrieval_evidence(
+    sliced_vector_results: List[Dict[str, Any]],
+) -> List[RetrievalEvidenceItem]:
+    items: List[RetrievalEvidenceItem] = []
+    for ref_index, result in enumerate(sliced_vector_results, start=1):
+        meta = result.get("metadata") or {}
+        if not isinstance(meta, dict):
+            meta = {}
+        cid = result.get("chunk_id", "") or "unknown"
+        items.append(
+            RetrievalEvidenceItem(
+                ref_index=ref_index,
+                chunk_id=cid,
+                text=result.get("chunk", "") or "",
+                source=result.get("source", "unknown") or "unknown",
+                score=float(result.get("score", 0.0)),
+                metadata=dict(meta),
+            )
+        )
+    return items
+
+
+def _parse_answer_vector_refs(answer: str, max_valid_ref: int) -> List[int]:
+    if max_valid_ref < 1:
+        return []
+    seen: Set[int] = set()
+    for m in re.finditer(r"\[(\d+)\]", answer):
+        try:
+            n = int(m.group(1))
+        except ValueError:
+            continue
+        if 1 <= n <= max_valid_ref:
+            seen.add(n)
+    return sorted(seen)
 
 
 def _build_trace_paths(retrieval_results: Dict[str, Any]) -> List[TracePath]:
@@ -133,6 +182,8 @@ class RAGGenerator:
                 related_cases=[],
                 confidence_score=0.0,
                 trace_paths=[],
+                retrieval_evidence=[],
+                answer_cited_vector_refs=[],
                 validation_flags=ValidationFlags(
                     amount_validated=True,
                     time_validated=True,
@@ -143,7 +194,10 @@ class RAGGenerator:
             )
 
         params = retrieval_results.get("parameters", {})
-        
+        vector_top_k = params.get("vector_top_k", len(vector_results))
+        sliced = _slice_vector_for_prompt(vector_results, vector_top_k)
+        retrieval_evidence = _build_retrieval_evidence(sliced)
+
         # 如果有 LLM，调用 Qwen 生成回答
         if self._has_llm and self._llm_client:
             try:
@@ -152,7 +206,7 @@ class RAGGenerator:
                     question=question,
                     vector_results=vector_results,
                     graph_results=graph_results,
-                    vector_top_k=params.get("vector_top_k", len(vector_results)),
+                    vector_top_k=vector_top_k,
                     graph_hops=params.get("graph_hops", 2),
                 )
                 
@@ -175,6 +229,7 @@ class RAGGenerator:
                 # 解析 LLM 回答中的条款和案例（简单实现，后续可优化）
                 basis_clauses = self._extract_basis_clauses(answer, vector_results)
                 related_cases = self._extract_related_cases(answer, graph_results)
+                cited = _parse_answer_vector_refs(answer, len(sliced))
                 
                 return RAGQueryResponse(
                     answer=answer,
@@ -182,6 +237,8 @@ class RAGGenerator:
                     related_cases=related_cases,
                     confidence_score=_confidence_from_retrieval(vector_results, graph_results),
                     trace_paths=_build_trace_paths(retrieval_results),
+                    retrieval_evidence=retrieval_evidence,
+                    answer_cited_vector_refs=cited,
                     validation_flags=ValidationFlags(
                         amount_validated=True,
                         time_validated=True,
@@ -194,16 +251,26 @@ class RAGGenerator:
             except Exception as e:
                 logger.error("llm_generation_failed", error=str(e))
                 # 降级到占位生成
-                return self._fallback_generate(question, retrieval_results, str(e))
+                return self._fallback_generate(
+                    question, retrieval_results, str(e),
+                    retrieval_evidence=retrieval_evidence,
+                    vector_top_k=vector_top_k,
+                )
         else:
             # 无 LLM 时的占位生成
-            return self._fallback_generate(question, retrieval_results, "LLM not configured")
+            return self._fallback_generate(
+                question, retrieval_results, "LLM not configured",
+                retrieval_evidence=retrieval_evidence,
+                vector_top_k=vector_top_k,
+            )
 
     def _fallback_generate(
         self,
         question: str,
         retrieval_results: Dict[str, Any],
         error_reason: str,
+        retrieval_evidence: List[RetrievalEvidenceItem],
+        vector_top_k: int,
     ) -> RAGQueryResponse:
         """LLM 不可用时的占位生成"""
         vector_results = retrieval_results.get("vector_results", [])
@@ -214,7 +281,7 @@ class RAGGenerator:
             question=question,
             vector_results=vector_results,
             graph_results=graph_results,
-            vector_top_k=params.get("vector_top_k", len(vector_results)),
+            vector_top_k=params.get("vector_top_k", vector_top_k),
             graph_hops=params.get("graph_hops", 2),
             vector_weight=params.get("weights", {}).get("vector", 0.6),
             graph_weight=params.get("weights", {}).get("graph", 0.4),
@@ -232,12 +299,17 @@ class RAGGenerator:
             f"注意：{error_reason}。配置 DASHSCOPE_API_KEY 后可启用完整生成能力。"
         )
 
+        sliced = _slice_vector_for_prompt(vector_results, vector_top_k)
+        cited = _parse_answer_vector_refs(answer, len(sliced))
+
         return RAGQueryResponse(
             answer=answer,
             basis_clauses=[],
             related_cases=[],
             confidence_score=confidence,
             trace_paths=trace_paths,
+            retrieval_evidence=retrieval_evidence,
+            answer_cited_vector_refs=cited,
             validation_flags=ValidationFlags(
                 amount_validated=True,
                 time_validated=True,
@@ -254,28 +326,62 @@ class RAGGenerator:
         self,
         answer: str,
         vector_results: List[Dict[str, Any]],
-    ) -> List[str]:
-        """从回答中提取依据条款（简单实现：返回相关文档片段的来源）"""
-        clauses = []
+    ) -> List[BasisClause]:
+        """依据向量检索前 3 条构造条款摘要（元数据 + 正文截断）。"""
+        seen: Set[Tuple[str, str]] = set()
+        clauses: List[BasisClause] = []
         for result in vector_results[:3]:
-            source = result.get("source", "")
-            if source and source != "unknown":
-                clauses.append(source)
-        return list(set(clauses))
+            meta = result.get("metadata") or {}
+            if not isinstance(meta, dict):
+                meta = {}
+            clause_id = (meta.get("clause_id") or "").strip() or "未标注"
+            source = (result.get("source") or "unknown").strip() or "unknown"
+            key = (clause_id, source)
+            if key in seen:
+                continue
+            seen.add(key)
+            chunk = result.get("chunk", "") or ""
+            preview = chunk[:_CLAUSE_PREVIEW_LEN] if chunk else ""
+            eff = (meta.get("effectiveness_level") or "未标注").strip() or "未标注"
+            clauses.append(
+                BasisClause(
+                    clause_id=clause_id,
+                    clause_content=preview,
+                    source=source,
+                    effectiveness_level=eff,
+                )
+            )
+        return clauses
 
     def _extract_related_cases(
         self,
         answer: str,
         graph_results: List[Dict[str, Any]],
-    ) -> List[str]:
-        """从回答中提取相关案例（简单实现：返回图谱结果中的案例类型）"""
-        cases = []
+    ) -> List[RelatedCase]:
+        """从图谱结果中提取 AuditCase 条目（前 3 条相关）。"""
+        cases: List[RelatedCase] = []
         for result in graph_results[:3]:
-            if result.get("type") == "AuditCase":
-                props = result.get("properties", {})
-                case_name = props.get("name", props.get("title", ""))
-                if case_name:
-                    cases.append(case_name)
+            if result.get("type") != "AuditCase":
+                continue
+            props = result.get("properties") or {}
+            if not isinstance(props, dict):
+                props = {}
+            case_name = props.get("name") or props.get("title") or ""
+            case_id = (props.get("case_id") or result.get("node_id") or "未标注").strip() or "未标注"
+            summary = case_name.strip() if case_name else (str(props)[:_CLAUSE_PREVIEW_LEN] or "无摘要")
+            raw_score = float(result.get("relevance_score", 0.0))
+            similarity_score = max(0.0, min(1.0, raw_score))
+            outcome = props.get("outcome")
+            if outcome is not None:
+                outcome = str(outcome)
+            cases.append(
+                RelatedCase(
+                    case_id=case_id,
+                    case_summary=summary,
+                    similarity_score=similarity_score,
+                    outcome=outcome,
+                )
+            )
         return cases
 
     def _assess_risk_level(

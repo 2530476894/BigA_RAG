@@ -16,9 +16,10 @@ AUDIT_RAG_SYSTEM_PROMPT = """你是一名专业的审计知识库助手，基于
 请遵循以下原则：
 1. **准确性优先**：严格基于提供的检索上下文回答，不要编造信息
 2. **引用来源**：回答中应明确指出引用的法规条款或案例来源
-3. **结构化输出**：使用清晰的段落和要点组织回答
-4. **风险提示**：如涉及风险事件，应说明风险等级和合规建议
-5. **不确定性处理**：如检索信息不足，应明确告知用户并建议查阅原文
+3. **向量片段引用**：凡使用「向量检索结果」区块中的文档片段作事实陈述，须在相应句子中使用半角方括号编号引用，如 [1]、[2]，且只能使用该区块中已出现的编号（不要使用图谱区的【图n】编号来指代文档片段）
+4. **结构化输出**：使用清晰的段落和要点组织回答
+5. **风险提示**：如涉及风险事件，应说明风险等级和合规建议
+6. **不确定性处理**：如检索信息不足，应明确告知用户并建议查阅原文
 
 如果检索上下文中没有相关信息，请如实告知用户，不要强行回答。
 """
@@ -92,8 +93,10 @@ def format_audit_context(
         chunk = result.get("chunk", "")
         source = result.get("source", "未知来源")
         score = result.get("score", 0.0)
+        chunk_id = result.get("chunk_id", "") or ""
+        id_part = f" | chunk_id：{chunk_id}" if chunk_id and chunk_id != "unknown" else ""
         vector_context_parts.append(
-            f"[{i}] 来源：{source} | 相似度：{score:.3f}\n    内容：{chunk}"
+            f"[{i}] 来源：{source} | 相似度：{score:.3f}{id_part}\n    内容：{chunk}"
         )
     vector_context = (
         "\n\n".join(vector_context_parts)
@@ -107,7 +110,7 @@ def format_audit_context(
         nodes = result.get("nodes", [])
         properties = result.get("properties", {})
         graph_context_parts.append(
-            f"[{i}] 路径：{path_desc}\n    节点：{' -> '.join(nodes)}\n    属性：{properties}"
+            f"【图{i}】路径：{path_desc}\n    节点：{' -> '.join(nodes)}\n    属性：{properties}"
         )
     graph_context = (
         "\n\n".join(graph_context_parts)
@@ -168,9 +171,10 @@ def build_rag_prompt(
 {question}
 
 请根据上述检索内容，给出专业、准确的审计咨询回答。回答时应：
-1. 引用具体的法规条款或案例来源
-2. 如适用，说明风险等级和合规建议
-3. 保持回答结构清晰、易于理解
+1. 引用法规或文档片段时，必须使用「向量检索结果」区块中的半角编号，如 [1]、[2]，不要使用【图n】
+2. 引用具体的法规条款或案例来源（可与 [n] 并列说明法规名称）
+3. 如适用，说明风险等级和合规建议
+4. 保持回答结构清晰、易于理解
 
 回答："""
     
