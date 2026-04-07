@@ -226,7 +226,9 @@ async def rag_query(
         request: RAG 查询请求
 
     Returns:
-        ``RAGQueryResponse``：依据条款、关联案例、置信度、溯源路径等（部分字段随生成器实现可能为空列表）。
+        ``RAGQueryResponse``：含 ``retrieval_evidence``（进入模型的向量片段证据）、
+        ``answer_cited_vector_refs``（回答中解析出的 ``[n]`` 引用编号）、依据条款、关联案例、
+        置信度、溯源路径等（部分列表字段可能为空）。
     """
     # 生成任务 ID 用于审计追踪
     import uuid

@@ -121,7 +121,7 @@ class VectorService:
         Args:
             documents: 文档内容列表
             metadatas: 文档元数据列表（可选）
-            ids: 文档 ID 列表（可选，若不传则自动生成）
+            ids: 文档 ID 列表（可选，若不传则自动生成 UUID）。建议传入业务稳定的 id 作为片段溯源主键（检索结果中以 chunk_id 返回）。
             
         Returns:
             添加的文档 ID 列表
@@ -188,7 +188,7 @@ class VectorService:
             filter_metadata: 元数据过滤条件（可选）
             
         Returns:
-            检索结果列表，每项包含：chunk, source, score, metadata
+            检索结果列表，每项包含：chunk, source, score, metadata, chunk_id（Chroma 文档 id，缺失时为 ``unknown``）
 
         说明：在集合元数据 ``hnsw:space`` 为 cosine 时，将返回的 ``distance`` 近似为 ``1.0 - distance`` 作为 ``score``。
         """
@@ -210,7 +210,7 @@ class VectorService:
                     query_embeddings=query_embedding,
                     n_results=k,
                     where=filter_metadata,
-                    include=["documents", "metadatas", "distances"],
+                    include=["documents", "metadatas", "distances", "ids"],
                 )
                 logger.debug("vector_search_with_qwen_embedding", query=query[:50])
             else:
@@ -219,25 +219,29 @@ class VectorService:
                     query_texts=[query],
                     n_results=k,
                     where=filter_metadata,
-                    include=["documents", "metadatas", "distances"],
+                    include=["documents", "metadatas", "distances", "ids"],
                 )
                 logger.warning("fallback_to_text_query_no_embedding")
             
             # 格式化结果
             formatted_results = []
             if results["documents"] and results["documents"][0]:
+                id_row = results.get("ids", [[]])[0] if results.get("ids") else []
                 for i, doc in enumerate(results["documents"][0]):
-                    metadata = results["metadatas"][0][i] if results["metadatas"] else {}
+                    raw_meta = results["metadatas"][0][i] if results["metadatas"] else {}
+                    metadata = raw_meta if isinstance(raw_meta, dict) else {}
                     distance = results["distances"][0][i] if results["distances"] else 0.0
                     
                     # 将距离转换为相似度分数（余弦相似度）
                     similarity_score = 1.0 - distance
+                    chunk_id = id_row[i] if i < len(id_row) and id_row[i] else "unknown"
                     
                     formatted_results.append({
                         "chunk": doc,
                         "source": metadata.get("source", "unknown"),
                         "score": similarity_score,
                         "metadata": metadata,
+                        "chunk_id": chunk_id,
                     })
             
             logger.info(

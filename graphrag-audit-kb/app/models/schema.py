@@ -4,7 +4,7 @@ Pydantic Models - API 请求/响应与 RAG 结构化输出
 供 FastAPI ``response_model`` / OpenAPI 使用，与 ``app.main`` 路由及 ``RAGGenerator`` 输出字段对齐。
 """
 
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -60,7 +60,9 @@ class RelatedCase(BaseModel):
 class TracePath(BaseModel):
     """溯源路径模型（RAG 响应用）"""
 
-    path_type: Literal["vector", "graph"] = Field(..., description="路径类型")
+    path_type: Literal["vector", "graph", "entity_extraction"] = Field(
+        ..., description="路径类型"
+    )
     path_description: str = Field(..., description="溯源路径描述")
     nodes: List[str] = Field(default_factory=list, description="路径节点列表")
 
@@ -73,11 +75,23 @@ class ValidationFlags(BaseModel):
     uncertainty_notes: List[str] = Field(default_factory=list, description="不确定性说明")
 
 
+class RetrievalEvidenceItem(BaseModel):
+    """单次查询中进入 Prompt 的向量检索片段证据（与上下文中的 [ref_index] 一致）"""
+
+    ref_index: int = Field(..., ge=1, description="与向量检索结果区块中的 [n] 一致")
+    chunk_id: str = Field(..., description="向量库文档 id，缺失时为 unknown")
+    text: str = Field(..., description="片段正文")
+    source: str = Field(..., description="来源标识")
+    score: float = Field(..., description="相似度分数")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="片段元数据副本")
+
+
 class RAGQueryResponse(BaseModel):
     """
     RAG 查询响应模型。
 
-    当前无 LLM 生成路径下，``basis_clauses``、``related_cases`` 等可能为空列表，以占位实现为准。
+    片段级溯源见 ``retrieval_evidence``（本次进入模型的向量片段）；``answer_cited_vector_refs`` 为从回答中解析出的 ``[n]`` 引用编号。
+    无 LLM 或占位路径下，部分列表字段可能为空。
     """
 
     model_config = ConfigDict(
@@ -88,6 +102,17 @@ class RAGQueryResponse(BaseModel):
                 "related_cases": [],
                 "confidence_score": 0.85,
                 "trace_paths": [],
+                "retrieval_evidence": [
+                    {
+                        "ref_index": 1,
+                        "chunk_id": "abc-uuid",
+                        "text": "审计机关对政府投资建设项目…",
+                        "source": "中华人民共和国审计法",
+                        "score": 0.91,
+                        "metadata": {"clause_id": "第二十二条"},
+                    }
+                ],
+                "answer_cited_vector_refs": [1],
                 "validation_flags": {
                     "amount_validated": True,
                     "time_validated": True,
@@ -104,6 +129,14 @@ class RAGQueryResponse(BaseModel):
     related_cases: List[RelatedCase] = Field(default_factory=list, description="关联案例列表")
     confidence_score: float = Field(..., description="置信度", ge=0.0, le=1.0)
     trace_paths: List[TracePath] = Field(default_factory=list, description="溯源路径列表")
+    retrieval_evidence: List[RetrievalEvidenceItem] = Field(
+        default_factory=list,
+        description="本次进入 Prompt 的向量检索片段列表（按 ref_index 排序）",
+    )
+    answer_cited_vector_refs: List[int] = Field(
+        default_factory=list,
+        description="从 answer 中解析的合法向量引用编号 [n]，升序去重",
+    )
     validation_flags: ValidationFlags = Field(..., description="校验标志")
     risk_level: RiskLevel = Field(..., description="风险等级")
     compliance_suggestions: List[str] = Field(default_factory=list, description="合规建议列表")

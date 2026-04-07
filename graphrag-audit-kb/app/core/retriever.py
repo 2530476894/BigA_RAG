@@ -72,15 +72,20 @@ class HybridRetriever:
             - ``query``：原始查询文本
             - ``vector_results``：向量检索结果列表
             - ``graph_results``：图谱检索结果列表
+            - ``entities``：查询实体识别结果列表（供溯源路径等使用）
             - ``fused_results``：融合排序结果（当前 ``RAGGenerator`` 未使用，仅保留供扩展/分析）
             - ``parameters``：包含 ``vector_top_k``、``graph_hops``、``weights``（``vector``/``graph`` 权重）
         """
         top_k = vector_top_k or self._vector_top_k
         hops = graph_hops or self._graph_hops
+
+        entities = await self._extract_entities(query)
         
         # 并发执行向量检索和图谱检索
         vector_results = await self._retrieve_vector(query, top_k)
-        graph_results = await self._retrieve_graph(query, hops, include_cases, include_regulations)
+        graph_results = await self._retrieve_graph(
+            query, hops, include_cases, include_regulations, entities
+        )
         
         # 融合结果（生成器当前仅使用 vector/graph 与 parameters，未读取 fused_results）
         fused_results = self._fuse_results(vector_results, graph_results)
@@ -97,6 +102,7 @@ class HybridRetriever:
             "query": query,
             "vector_results": vector_results,
             "graph_results": graph_results,
+            "entities": entities,
             "fused_results": fused_results,
             "parameters": {
                 "vector_top_k": top_k,
@@ -133,12 +139,13 @@ class HybridRetriever:
         hops: int,
         include_cases: bool,
         include_regulations: bool,
+        entities: List[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
         """
         知识图谱检索
         
         策略：
-        1. 从查询中提取关键词，搜索匹配的节点
+        1. 使用调用方传入的实体列表，搜索匹配的节点
         2. 从匹配节点出发进行多跳查询
         3. 根据 include 参数过滤结果类型
         
@@ -147,14 +154,12 @@ class HybridRetriever:
             hops: 跳跃层数
             include_cases: 是否包含案例
             include_regulations: 是否包含法规
+            entities: 已由 ``retrieve`` 提取的实体列表
             
         Returns:
             图谱检索结果列表
         """
         try:
-            # Step 1: LLM实体提取
-            entities = await self._extract_entities(query)
-            
             graph_results = []
             
             # Step 2: 对每个实体进行搜索和多跳查询
